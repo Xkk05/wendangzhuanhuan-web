@@ -1,0 +1,47 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: converter-backend
+    environment:
+      BACKEND_PORT: 8002
+      BACKEND_UPLOAD_DIR: /data/uploads
+      BACKEND_DOWNLOAD_DIR: /data/downloads
+      BACKEND_LOG_DIR: /data/logs
+      MEMBERSHIP_SUBSITE_NAME: https://doc.kunqiongai.com/
+      PROD_OAUTH_CLIENT_ID: app_d2765ab4687d35dd
+      PROD_OAUTH_CLIENT_SECRET: 7ea69872de3809c9092fa7d386e54d66
+      MEMBERSHIP_PAY_PAGE: https://kunqiongai.com/web_member_pay.html
+      OAUTH_TOKEN_URL: https://login.kunqiongai.com/api/oauth/token
+    volumes:
+      - ./docker-data/backend:/data
+    restart: unless-stopped
+    networks:
+      - converter-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+    container_name: converter-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3016:80"
+    restart: unless-stopped
+    networks:
+      - converter-network
+
+networks:
+  converter-network:
+    driver: bridge

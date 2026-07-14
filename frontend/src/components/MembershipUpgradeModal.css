@@ -1,0 +1,195 @@
+.membership-upgrade-modal .ant-modal-content {
+  padding: 16px 20px !important;
+  border-radius: 12px;
+}
+
+.membership-upgrade-modal .modal-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.membership-upgrade-modal .status-tag {
+  border-radius: 12px;
+  padding: 0px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.membership-upgrade-modal .subtitle-text {
+  color: #666;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+/* 顶部状态卡片 */
+.membership-upgrade-modal .status-cards-row {
+  margin-bottom: 12px;
+}
+
+.membership-upgrade-modal .info-card {
+  background: #f8f9fa;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.membership-upgrade-modal .info-card-label {
+  color: #8c8c8c;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.membership-upgrade-modal .info-card-value {
+  color: #262626;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* 套餐卡片 */
+.membership-upgrade-modal .plans-container {
+  margin-top: 4px;
+}
+
+.membership-upgrade-modal .plan-card {
+  position: relative;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 12px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: #fff;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.membership-upgrade-modal .plan-card:hover {
+  border-color: #1890ff;
+}
+
+.membership-upgrade-modal .plan-card.selected {
+  border-color: #1890ff;
+  background: #f0f7ff;
+}
+
+.membership-upgrade-modal .plan-tag {
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  margin: 0;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.membership-upgrade-modal .plan-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 8px;
+}
+
+.membership-upgrade-modal .plan-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.membership-upgrade-modal .price-symbol {
+  font-size: 14px;
+  color: #1890ff;
+  font-weight: 600;
+}
+
+.membership-upgrade-modal .price-value {
+  font-size: 20px;
+  color: #1890ff;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.membership-upgrade-modal .plan-days {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.membership-upgrade-modal .plan-benefit {
+  font-size: 11px;
+  color: #8c8c8c;
+  line-height: 1.4;
+  flex-grow: 1;
+}
+
+/* 支付方式 */
+.membership-upgrade-modal .payment-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.membership-upgrade-modal .payment-radio-group {
+  display: block;
+  margin-top: 8px;
+}
+
+.membership-upgrade-modal .pay-method {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+/* 二维码区域 */
+.membership-upgrade-modal .qrcode-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.membership-upgrade-modal .qrcode-card {
+  width: 180px;
+  text-align: center;
+  border-radius: 8px;
+}
+
+.membership-upgrade-modal .qrcode-card .ant-card-body {
+  padding: 8px !important;
+}
+
+.membership-upgrade-modal .qrcode-card img {
+  width: 140px;
+  height: 140px;
+  margin-bottom: 4px;
+}
+
+.membership-upgrade-modal .qrcode-hint {
+  color: #595959;
+  font-size: 12px;
+}
+
+/* 底部按钮 */
+.membership-upgrade-modal .modal-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.membership-upgrade-modal .pay-submit-btn {
+  padding-left: 24px;
+  padding-right: 24px;
+  font-weight: 500;
+  height: 32px;
+}
+
+.membership-upgrade-modal .polling-alert {
+  margin-top: 8px;
+  padding: 4px 12px;
+}
+

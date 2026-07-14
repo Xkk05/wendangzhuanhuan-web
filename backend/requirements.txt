@@ -1,0 +1,30 @@
+fastapi
+uvicorn
+python-multipart
+pyyaml
+pillow
+dicttoxml
+xmltodict
+beautifulsoup4
+xhtml2pdf==0.2.15
+markdownify==0.11.6
+html2image==2.0.4.3
+python-docx
+lxml
+pywin32; sys_platform == 'win32'
+comtypes; sys_platform == 'win32'
+pymupdf
+pdf2docx
+pdfminer.six
+pikepdf
+pygments
+fpdf
+gtts
+pyttsx3
+pydub
+openpyxl
+python-pptx
+pdfplumber
+pandas
+reportlab
+pymysql

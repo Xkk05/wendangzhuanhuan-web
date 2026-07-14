@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>支付结果返回中</title>
+  </head>
+  <body>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var target = params.get('target') || (window.location.origin + '/account');
+        var message = {
+          type: 'KQ_MEMBERSHIP_PAYMENT_RETURN',
+          targetUrl: target,
+          ts: Date.now()
+        };
+
+        try {
+          localStorage.setItem('kq_membership_payment_return', JSON.stringify(message));
+        } catch (e) {}
+
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(message, window.location.origin);
+            try {
+              window.opener.focus();
+            } catch (e) {}
+            window.close();
+            setTimeout(function () {
+              window.location.replace(target);
+            }, 300);
+            return;
+          }
+        } catch (e) {}
+
+        window.location.replace(target);
+      })();
+    </script>
+  </body>
+</html>

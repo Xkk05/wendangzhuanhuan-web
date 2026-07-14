@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# Node / Frontend
+node_modules/
+dist/
+
+# Environment
+.env
+.env.*.local
+
+# Logs
+*.log
+
+# Uploads / Downloads (runtime data)
+backend/uploads/
+backend/downloads/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deep Copilot
+.deep-copilot/

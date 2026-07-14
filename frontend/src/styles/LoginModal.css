@@ -1,0 +1,266 @@
+.login-modal-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0 20px;
+}
+
+.login-modal-avatar-container {
+    position: relative;
+    margin-bottom: 24px;
+}
+
+.login-modal-avatar-container .avatar-badge {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    background: #10b981;
+    /* Emerald 500 - Validated checkmark color */
+    /* Emerald 500 */
+    border: 2px solid var(--card-bg);
+    /* Adapted to theme */
+    width: 20px;
+    height: 20px;
+    box-shadow: 0 2px 5px rgba(16, 185, 129, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 10px;
+}
+
+/* Modal Content Override for Dark Mode */
+.custom-login-modal .ant-modal-content {
+    background-color: var(--card-bg) !important;
+    color: var(--text-primary);
+}
+
+/* Modal Root Styles to ensure Mask is rounded and contained */
+.custom-login-modal-root .ant-modal-mask,
+.custom-login-modal-root .ant-modal-wrap {
+    position: absolute !important;
+    /* Force internal positioning */
+    border-radius: var(--main-radius);
+    overflow: hidden;
+}
+
+/* Fallback for safety if getContainer works but rootClassName logic fails on specific version */
+.app-container .ant-modal-mask {
+    border-radius: var(--main-radius);
+    overflow: hidden;
+    position: absolute !important;
+}
+
+.login-modal-title {
+    margin-bottom: 8px !important;
+    color: var(--text-primary) !important;
+    font-weight: 700 !important;
+}
+
+.login-modal-subtitle {
+    color: var(--text-secondary) !important;
+    margin-bottom: 32px !important;
+    font-size: 14px !important;
+}
+
+.login-modal-buttons {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.login-modal-btn-primary {
+    height: 44px !important;
+    border-radius: 22px !important;
+    /* Pill shape */
+    font-weight: 600 !important;
+    font-size: 15px !important;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3) !important;
+    border: none !important;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%) !important;
+    transition: all 0.3s ease !important;
+}
+
+.login-modal-btn-primary:hover {
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.45) !important;
+    transform: translateY(-2px);
+}
+
+.login-modal-btn-secondary {
+    height: 44px !important;
+    border-radius: 22px !important;
+    /* Pill shape */
+    font-weight: 500 !important;
+    color: var(--text-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    background: var(--card-bg) !important;
+}
+
+.login-modal-btn-secondary:hover {
+    border-color: var(--primary-color) !important;
+    color: var(--primary-color) !important;
+    background: var(--primary-soft) !important;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1) !important;
+}
+
+.login-modal-btn-secondary.ant-btn-dangerous {
+    color: #ef4444 !important;
+    /* Red-500 */
+    border-color: rgba(239, 68, 68, 0.3) !important;
+    background: rgba(239, 68, 68, 0.05) !important;
+}
+
+.login-modal-btn-secondary.ant-btn-dangerous:hover {
+    color: #fff !important;
+    background: #ef4444 !important;
+    border-color: #ef4444 !important;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25) !important;
+}
+
+.login-modal-btn-text {
+    color: var(--text-secondary) !important;
+    font-size: 13px !important;
+}
+
+.login-modal-btn-text:hover {
+    color: var(--primary-color) !important;
+    background: rgba(37, 99, 235, 0.05) !important;
+    border-radius: 8px;
+}
+
+/* Polling State Styles */
+.login-polling-container {
+    padding: 24px 0;
+    text-align: center;
+}
+
+.login-polling-icon {
+    font-size: 48px;
+    color: var(--primary-color);
+    margin-bottom: 24px;
+}
+
+.login-polling-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.login-polling-desc {
+    color: var(--text-secondary);
+    margin-bottom: 32px;
+}
+
+/* User Button Styles */
+.user-btn-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-app-region: no-drag;
+}
+
+/* 方案A：轻量融合风 - Guest 态 */
+.user-btn {
+    height: 32px !important;
+    padding: 0 16px !important;
+    border-radius: 99px !important;
+    /* Pill */
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+
+    /* 核心改变：去实体色，改浅蓝背景 */
+    /* 核心改变：去实体色，改浅蓝背景 */
+    border: 1px solid transparent !important;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.08) 0%, rgba(37, 99, 235, 0.03) 100%) !important;
+    color: var(--primary-color) !important;
+    box-shadow: none !important;
+}
+
+[data-theme='dark'] .user-btn {
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.15) 0%, rgba(96, 165, 250, 0.05) 100%) !important;
+    border: 1px solid rgba(96, 165, 250, 0.2) !important;
+}
+
+.user-btn:hover {
+    background: var(--card-bg) !important;
+    color: var(--primary-dark) !important;
+    border-color: rgba(37, 99, 235, 0.2) !important;
+    /* 轻微阴影，增加层次 */
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15) !important;
+    transform: translateY(-1px) !important;
+}
+
+[data-theme='dark'] .user-btn:hover {
+    background: var(--hover-bg) !important;
+    color: var(--primary-color) !important;
+}
+
+.user-btn:active {
+    background: rgba(37, 99, 235, 0.25) !important;
+}
+
+/* Polling 态 */
+.user-btn-polling {
+    background: var(--card-bg) !important;
+    color: var(--primary-color) !important;
+    border: 1px solid rgba(37, 99, 235, 0.3) !important;
+    cursor: default !important;
+}
+
+.user-btn-polling:hover {
+    background: var(--card-bg) !important;
+    box-shadow: none !important;
+}
+
+/* 方案A：轻量融合风 - Logged In 态 */
+.user-profile-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 12px 3px 4px;
+    /* 左侧紧贴头像，右侧留空 */
+    border-radius: 18px;
+    /* 胶囊形 */
+    cursor: pointer;
+    transition: all 0.2s;
+
+    /* 核心改变：浅灰胶囊 */
+    background: var(--hover-bg);
+    border: 1px solid var(--border-color);
+}
+
+.user-profile-trigger:hover {
+    background: var(--card-bg);
+    border-color: rgba(37, 99, 235, 0.2);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+    /* Soft blue shadow on hover */
+}
+
+[data-theme='dark'] .user-profile-trigger:hover {
+    background: var(--hover-bg);
+    border-color: var(--primary-soft);
+}
+
+/* 配合 UserButton.tsx 中的 Avatar 样式，这里用 CSS 控制更佳，但为了兼容暂时保留 */
+.user-profile-trigger .ant-avatar {
+    /* 头像白边 */
+    border: 2px solid var(--card-bg);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.user-nickname {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
