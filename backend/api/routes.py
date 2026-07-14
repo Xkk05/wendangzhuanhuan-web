@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # backend/api/routes.py
 import base64
 import hashlib
@@ -193,6 +195,8 @@ def _first_non_blank(*values) -> str:
     return ""
 
 
+GUEST_TOKEN = "__guest_bypass_token__"
+
 def _extract_api_web_token(request: Request) -> str:
     token = request.headers.get("token")
     if token:
@@ -200,11 +204,8 @@ def _extract_api_web_token(request: Request) -> str:
     auth_header = request.headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):
         return auth_header[7:].strip()
-    raise HTTPException(status_code=401, detail={
-        "success": False,
-        "code": "login_required",
-        "message": "请先登录后再使用"
-    })
+    # 跳过登录：未登录用户使用访客 token
+    return GUEST_TOKEN
 
 
 def _request_meta(request: Request) -> dict:
@@ -495,26 +496,19 @@ def _merge_profile_with_membership(local_token: str, membership: Optional[dict] 
 
 
 def _assert_processing_access(local_token: str, origin: str = "http://localhost:5176") -> dict:
-    profile = _merge_profile_with_membership(local_token)
-    if profile.get("access_state") == "upgrade_required":
-        raise HTTPException(status_code=403, detail={
-            "success": False,
-            "code": "membership_required",
-            "message": "7天试用已结束，请充值后继续使用",
-            "access_state": profile.get("access_state"),
-            "requires_upgrade": True,
-            "payment_url": user_center_service.build_payment_url(local_token, origin),
-        })
-    if (profile.get("remaining_daily_count") or 0) <= 0:
-        raise HTTPException(status_code=403, detail={
-            "success": False,
-            "code": "membership_required",
-            "message": "今日使用次数已用完，请充值后继续使用",
-            "access_state": profile.get("access_state"),
-            "requires_upgrade": True,
-            "payment_url": user_center_service.build_payment_url(local_token, origin),
-        })
-    return profile
+    # 跳过登录：所有访客均拥有无限访问权限
+    return {
+        "is_vip": True,
+        "vip_level": 1,
+        "access_state": "member_active",
+        "remaining_daily_count": 999999,
+        "remaining_days": 999,
+        "allow_batch": True,
+        "trial_active": False,
+        "payment_url": "",
+        "payment_auth_expired": False,
+        "access_code": "",
+    }
 
 
 def _build_oauth_state() -> str:

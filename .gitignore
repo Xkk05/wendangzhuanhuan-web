@@ -30,3 +30,11 @@ Thumbs.db
 
 # Deep Copilot
 .deep-copilot/
+
+# Non-core files (bug screenshots, generated docs, test reports)
+bug_screenshots/
+website-modules/
+.trae-html-share-packages/
+~$*
+*.xlsx
+$null

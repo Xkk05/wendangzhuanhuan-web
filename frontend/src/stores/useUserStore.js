@@ -164,16 +164,7 @@ export const useUserStore = create(
 
       openUserCenter: async (navigate, returnTo = DEFAULT_RETURN_TO) => {
         const safeReturnTo = getSafeReturnTo(returnTo);
-        const { token, startLoginProcess, isLoggedIn } = get();
-
-        if (!isLoggedIn || !token) {
-          toast.error('请先登录');
-          await startLoginProcess({ returnTo: safeReturnTo });
-          return;
-        }
-
         set({ pendingReturnTo: safeReturnTo, isLoginModalVisible: false });
-        void get().prewarmMembershipPaymentIntent(safeReturnTo).catch(() => null);
         navigate(buildAccountRouteForReturnTo(safeReturnTo));
       },
 
@@ -417,56 +408,7 @@ export const useUserStore = create(
       },
 
       requireFeatureAccess: ({ navigate, returnTo, filesCount = 1, disableWatermark = false, t }) => {
-        const safeReturnTo = getSafeReturnTo(returnTo);
-        const { isLoggedIn, userProfile, webMemberStatus } = get();
-
-        if (!isLoggedIn || !userProfile) {
-          toast.error(t('userCenter.login_required_action'));
-          get().openUserCenter(navigate, safeReturnTo);
-          return false;
-        }
-
-        // Subsite web-member active = unlimited VIP access
-        const isWebMemberActive = Boolean(webMemberStatus?.active || userProfile.web_member_active);
-        if (isWebMemberActive) {
-          return true;
-        }
-
-        if (filesCount > 1 && !userProfile.allow_batch) {
-          toast.error(t('userCenter.batch_upgrade_hint'));
-          // 修改为直接跳转到支付页，不再显示弹窗
-          const paymentUrl = userProfile.payment_url || '';
-          if (paymentUrl) {
-            window.open(paymentUrl, '_blank', 'noopener,noreferrer');
-          } else {
-            get().openUserCenter(navigate, safeReturnTo);
-          }
-          return false;
-        }
-
-        // Watermark-free export is temporarily shown as a placeholder only.
-        void disableWatermark;
-
-        if ((userProfile.remaining_daily_count || 0) <= 0 || userProfile.access_state === 'upgrade_required') {
-          // 检查是否是因为后端 Token 过期导致的限制
-          if (userProfile.access_code === 'upstream_login_expired') {
-            toast.error(t('userCenter.session_expired_relogin', { defaultValue: '登录已失效，正在为您自动重登...' }));
-            // 记录支付意图，重登回来后自动触发
-            get().startLoginProcess({ returnTo: safeReturnTo });
-            return false;
-          }
-
-          toast.error(t('userCenter.quota_upgrade_hint'));
-          // 修改为直接跳转到支付页，不再显示弹窗
-          const paymentUrl = userProfile.payment_url || '';
-          if (paymentUrl) {
-            window.open(paymentUrl, '_blank', 'noopener,noreferrer');
-          } else {
-            get().openUserCenter(navigate, safeReturnTo);
-          }
-          return false;
-        }
-
+        // 跳过登录：所有用户均可使用完整功能
         return true;
       },
 
@@ -508,23 +450,21 @@ export const useUserStore = create(
       },
 
       init: async () => {
-        const { token } = get();
-        if (!token) {
-          set({ isLoggedIn: false, userInfo: null, userProfile: null, recentRecords: [], isPolling: false, profileHydrating: false });
-          return;
-        }
-
-        try {
-          const valid = await AuthService.checkLogin(token);
-          if (!valid) {
-            await get().logout();
-            return;
-          }
-          await get().refreshProfile({ skipWebMember: true });
-        } catch {
-          set({ profileHydrating: false, isPolling: false });
-          await get().logout();
-        }
+        // 跳过登录：直接设置访客状态
+        set({
+          isLoggedIn: true,
+          token: "__guest_bypass_token__",
+          userInfo: { nickname: "访客" },
+          userProfile: {
+            is_vip: true,
+            vip_level: 1,
+            access_state: "member_active",
+            remaining_daily_count: 999999,
+            allow_batch: true,
+          },
+          isPolling: false,
+          profileHydrating: false,
+        });
       },
 
       hasPendingPaymentResumeCheckout: () => hasPaymentResumeCheckoutPending(),
