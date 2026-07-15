@@ -25,16 +25,16 @@ VIP_MAX_FILE_SIZE = int(os.environ.get("VIP_MAX_FILE_SIZE", str(500 * 1024 * 102
 LOCAL_SESSION_EXPIRE_SECONDS = int(os.environ.get("LOCAL_SESSION_EXPIRE_SECONDS", str(7 * 24 * 60 * 60)))
 MEMBERSHIP_PAY_PAGE = os.environ.get("MEMBERSHIP_PAY_PAGE", "https://kunqiongai.com/web_member_pay.html")
 OAUTH_TOKEN_URL = os.environ.get("OAUTH_TOKEN_URL", "https://login.kunqiongai.com/api/oauth/token")
-DEV_OAUTH_CLIENT_ID = os.environ.get("DEV_OAUTH_CLIENT_ID", "app_971b24a9955eae3b")
-DEV_OAUTH_CLIENT_SECRET = os.environ.get("DEV_OAUTH_CLIENT_SECRET", "eeb1956c5dc4b56d423046c56b23d406")
-PROD_OAUTH_CLIENT_ID = os.environ.get("PROD_OAUTH_CLIENT_ID", "app_d2765ab4687d35dd")
-PROD_OAUTH_CLIENT_SECRET = os.environ.get("PROD_OAUTH_CLIENT_SECRET", "7ea69872de3809c9092fa7d386e54d66")
+DEV_OAUTH_CLIENT_ID = os.environ.get("DEV_OAUTH_CLIENT_ID", "")
+DEV_OAUTH_CLIENT_SECRET = os.environ.get("DEV_OAUTH_CLIENT_SECRET", "")
+PROD_OAUTH_CLIENT_ID = os.environ.get("PROD_OAUTH_CLIENT_ID", "")
+PROD_OAUTH_CLIENT_SECRET = os.environ.get("PROD_OAUTH_CLIENT_SECRET", "")
 
 DB_CONFIG = {
-    "host": os.environ.get("USER_CENTER_DB_HOST", "82.157.237.217"),
-    "port": int(os.environ.get("USER_CENTER_DB_PORT", "35007")),
-    "user": os.environ.get("USER_CENTER_DB_USER", "kqai_web_doc"),
-    "password": os.environ.get("USER_CENTER_DB_PASSWORD", "8d18f490a51a3b2b8d040f35aa879707"),
+    "host": os.environ.get("USER_CENTER_DB_HOST", "localhost"),
+    "port": int(os.environ.get("USER_CENTER_DB_PORT", "3306")),
+    "user": os.environ.get("USER_CENTER_DB_USER", "root"),
+    "password": os.environ.get("USER_CENTER_DB_PASSWORD", ""),
     "database": os.environ.get("USER_CENTER_DB_NAME", "kqai_web_doc"),
     "charset": "utf8mb4",
     "cursorclass": DictCursor,
@@ -873,47 +873,50 @@ class UserCenterService:
         result_path: Optional[str] = None,
         result_message: Optional[str] = None,
     ):
-        profile = self.get_user_profile(token, allow_missing=True)
-        if not profile:
-            return
+        try:
+            profile = self.get_user_profile(token, allow_missing=True)
+            if not profile:
+                return
 
-        self.ensure_schema()
-        completed_at = datetime.utcnow() if status in {"completed", "failed"} else None
-        with self.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO app_tool_processing_record (
-                        app_user_id, global_user_id, app_scope, tool_name, file_name, file_size,
-                        source_format, target_format, result_path, result_message, status, completed_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        profile["user_id"],
-                        profile["global_user_id"],
-                        APP_SCOPE,
-                        tool_name,
-                        file_name,
-                        file_size,
-                        source_format,
-                        target_format,
-                        result_path,
-                        result_message,
-                        status,
-                        completed_at,
-                    ),
-                )
-                if status == "completed":
+            self.ensure_schema()
+            completed_at = datetime.utcnow() if status in {"completed", "failed"} else None
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        UPDATE app_user_profile
-                        SET daily_used_count = daily_used_count + 1, updated_at = CURRENT_TIMESTAMP
-                        WHERE app_user_id = %s
+                        INSERT INTO app_tool_processing_record (
+                            app_user_id, global_user_id, app_scope, tool_name, file_name, file_size,
+                            source_format, target_format, result_path, result_message, status, completed_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
-                        (profile["user_id"],),
-                )
-            conn.commit()
-        self.invalidate_profile_cache(token)
+                        (
+                            profile["user_id"],
+                            profile["global_user_id"],
+                            APP_SCOPE,
+                            tool_name,
+                            file_name,
+                            file_size,
+                            source_format,
+                            target_format,
+                            result_path,
+                            result_message,
+                            status,
+                            completed_at,
+                        ),
+                    )
+                    if status == "completed":
+                        cursor.execute(
+                            """
+                            UPDATE app_user_profile
+                            SET daily_used_count = daily_used_count + 1, updated_at = CURRENT_TIMESTAMP
+                            WHERE app_user_id = %s
+                            """,
+                            (profile["user_id"],),
+                    )
+                conn.commit()
+            self.invalidate_profile_cache(token)
+        except Exception:
+            pass  # DB 记录失败不影响转换结果
 
     def build_payment_url(self, token: str = "", return_url: str = "https://doc.kunqiongai.com/account?returnTo=%2F", include_token: bool = True) -> str:
         profile = None

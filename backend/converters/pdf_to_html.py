@@ -225,6 +225,13 @@ class PdfToHtmlConverter(BaseConverter):
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(html_content))
         
+        # Bug#9: Clean up temp page images directory
+        try:
+            if os.path.isdir(images_dir):
+                shutil.rmtree(images_dir, ignore_errors=True)
+        except Exception:
+            pass
+        
         return {
             'success': True,
             'output_path': output_path,

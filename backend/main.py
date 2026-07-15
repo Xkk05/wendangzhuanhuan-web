@@ -1,10 +1,25 @@
 # backend/main.py
+import os
+import sys
+
+# 加载 .env 文件以支持本地开发环境
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+if os.path.isfile(_env_path):
+    with open(_env_path, encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _, _val = _line.partition("=")
+                _key, _val = _key.strip(), _val.strip()
+                if _key:
+                    os.environ.setdefault(_key, _val)
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.staticfiles import StaticFiles
-import os
-import sys
 
 # 添加项目根目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,6 +30,28 @@ from backend.utils.logger import logger
 from backend.utils.cleanup import cleanup_service
 
 app = FastAPI(title="Format Converter API")
+
+# ---- Security & Performance Middleware ----
+
+# Gzip compression (Bug#15)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Security headers middleware (Bug#3)
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+        # Cache static downloads: 1 hour
+        if "/downloads/" in str(request.url):
+            response.headers["Cache-Control"] = "public, max-age=3600"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # 配置 CORS
 default_cors_origins = [

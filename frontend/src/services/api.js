@@ -14,12 +14,12 @@ const resolveFallbackBaseUrl = () => {
     const { hostname } = window.location;
     const isLocalDevHost = hostname === 'localhost' || hostname === '127.0.0.1';
     if (isLocalDevHost) {
-      return 'http://127.0.0.1:8003';
+      return 'http://127.0.0.1:8002';
     }
     return origin;
   }
 
-  return 'http://127.0.0.1:8003';
+  return 'http://127.0.0.1:8002';
 };
 
 const fallbackBaseUrl = resolveFallbackBaseUrl();
@@ -268,10 +268,10 @@ export const convertGeneral = async (file, targetFormat, options = {}) => {
     const timeoutId = setTimeout(() => controller.abort(), 15 * 60 * 1000); // 15分钟超时
     
     // 如果提供了外部 signal，则监听其 abort 事件
+    let externalAbortHandler = null;
     if (options.signal) {
-      options.signal.addEventListener('abort', () => {
-        controller.abort();
-      });
+      externalAbortHandler = () => controller.abort();
+      options.signal.addEventListener('abort', externalAbortHandler);
     }
     
     try {
@@ -290,6 +290,10 @@ export const convertGeneral = async (file, targetFormat, options = {}) => {
         throw new Error('转换超时，请稍后重试或联系管理员');
       }
       throw error;
+    } finally {
+      if (options.signal && externalAbortHandler) {
+        try { options.signal.removeEventListener('abort', externalAbortHandler); } catch {}
+      }
     }
   } catch (error) {
     console.error('Conversion error:', error);

@@ -450,18 +450,30 @@ export const useUserStore = create(
       },
 
       init: async () => {
-        // 跳过登录：直接设置访客状态
+        // 检查是否有持久化的真实 token
+        const persistedToken = get().token;
+        if (persistedToken && persistedToken !== '__guest_bypass_token__') {
+          // 有真实 token，尝试验证登录状态
+          try {
+            const loggedIn = await AuthService.checkLogin(persistedToken);
+            if (loggedIn) {
+              set({ isLoggedIn: true, isPolling: false, profileHydrating: false });
+              // 异步刷新 profile
+              void get().refreshProfile({ skipWebMember: true }).catch(() => {});
+              return;
+            }
+          } catch {
+            // 验证失败，清除过期 token
+          }
+        }
+        // 访客模式：未登录状态
         set({
-          isLoggedIn: true,
-          token: "__guest_bypass_token__",
-          userInfo: { nickname: "访客" },
-          userProfile: {
-            is_vip: true,
-            vip_level: 1,
-            access_state: "member_active",
-            remaining_daily_count: 999999,
-            allow_batch: true,
-          },
+          isLoggedIn: false,
+          token: null,
+          apiWebToken: null,
+          userInfo: null,
+          userProfile: null,
+          recentRecords: [],
           isPolling: false,
           profileHydrating: false,
         });
@@ -474,7 +486,14 @@ export const useUserStore = create(
     {
       name: 'user-storage',
       partialize: (state) => ({
-        token: state.token,
+        // Bug#6: Do NOT persist guest/bogus tokens to localStorage.
+        // Only persist tokens that look like real OAuth/JWT tokens.
+        token: (() => {
+          const t = state.token;
+          if (!t || t === '__guest_bypass_token__' || t.length < 10) return null;
+          if (t.startsWith('__') && t.endsWith('__')) return null;
+          return t;
+        })(),
         apiWebToken: state.apiWebToken,
         userInfo: state.userInfo,
         userProfile: state.userProfile,

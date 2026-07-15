@@ -36,4 +36,10 @@ RUN mkdir -p /data/uploads /data/downloads /data/logs
 
 EXPOSE 8002
 
+# Bug#13: Run as non-root user
+RUN groupadd -r converter && useradd -r -g converter converter && \
+    chown -R converter:converter /app /data
+
+USER converter
+
 CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8002", "--timeout-keep-alive", "900"]

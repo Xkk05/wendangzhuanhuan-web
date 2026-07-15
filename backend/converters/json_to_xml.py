@@ -26,7 +26,9 @@ class JsonToXmlConverter(BaseConverter):
             
             # 写入 XML 文件
             tree = ET.ElementTree(root)
-            ET.indent(tree, space="  ", level=0) # 格式化 XML
+            # 手动格式化 XML（兼容 Python 3.8，替代 3.9+ 的 ET.indent）
+            self._indent_xml(root, level=0)
+            tree = ET.ElementTree(root)
             tree.write(output_path, encoding='utf-8', xml_declaration=True)
             
             return {
@@ -41,6 +43,20 @@ class JsonToXmlConverter(BaseConverter):
         except Exception as e:
             self.cleanup_on_error(output_path)
             raise Exception(f"JSON to XML conversion failed: {str(e)}")
+
+    def _indent_xml(self, elem, level=0):
+        """手动 XML 缩进（兼容 Python 3.6+）"""
+        indent = "\n" + "  " * level
+        if len(elem):
+            if not elem.text or not elem.text.strip():
+                elem.text = indent + "  "
+            for child in elem:
+                self._indent_xml(child, level + 1)
+            if not elem.tail or not elem.tail.strip():
+                elem.tail = indent
+        else:
+            if level and (not elem.tail or not elem.tail.strip()):
+                elem.tail = indent
 
     def _build_xml(self, parent, data):
         """递归构建 XML 结构"""

@@ -10,11 +10,19 @@ class ExcelToHtmlConverter(BaseConverter):
     """
     
     def convert(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
-        self.validate_input(input_path, 5)
+        import os as _os_html
+        # Bug#11: Guard against large files that could OOM
+        file_size = _os_html.path.getsize(input_path)
+        max_size = 100 * 1024 * 1024  # 100MB limit for openpyxl
+        if file_size > max_size:
+            raise Exception(f"Excel file too large ({file_size / 1024 / 1024:.1f} MB). "
+                          f"Maximum size for HTML conversion is 100 MB.")
+        self.validate_input(input_path)
+        self.update_progress(input_path, 5)
         
         try:
-            # Load workbook
-            wb = load_workbook(input_path, data_only=True)
+            # Load workbook with read_only to avoid OOM on large files
+            wb = load_workbook(input_path, data_only=True, read_only=True)
             self.update_progress(input_path, 20)
             
             html_content = []

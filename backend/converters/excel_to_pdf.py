@@ -55,6 +55,8 @@ class ExcelToPdfConverter(BaseConverter):
             excel = comtypes.client.CreateObject('Excel.Application')
             excel.Visible = False
             excel.DisplayAlerts = False
+            try: excel.AutomationSecurity = 3  # msoAutomationSecurityForceDisable
+            except: pass
             
             # 打开工作簿
             workbook = excel.Workbooks.Open(input_path, ReadOnly=True)
@@ -208,6 +210,12 @@ class ExcelToPdfConverter(BaseConverter):
                     excel.Quit()
             except:
                 pass
+            # Bug#10: Force kill zombie Excel process
+            try:
+                import os as _os
+                _os.system('taskkill /f /im EXCEL.EXE 2>nul >nul')
+            except:
+                pass
 
     def _convert_with_libreoffice(self, input_path: str, output_path: str) -> Dict[str, Any]:
         """使用 LibreOffice 转换"""
@@ -283,6 +291,34 @@ class ExcelToPdfConverter(BaseConverter):
         else:
             error_messages.append("LibreOffice not available")
             print("[ExcelToPdf] LibreOffice not available")
+            
+        # 策略3: HTML 中转 (Excel -> HTML -> PDF via browser)
+        try:
+            self.update_progress(input_path, 60)
+            print("[ExcelToPdf] Trying HTML-based fallback...")
+            import tempfile
+            from .excel_to_html import ExcelToHtmlConverter
+            from .html_to_pdf import HtmlToPdfConverter
+            
+            html_converter = ExcelToHtmlConverter()
+            pdf_converter = HtmlToPdfConverter()
+            
+            with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp:
+                html_path = tmp.name
+            html_result = html_converter.convert(input_path, html_path)
+            pdf_result = pdf_converter.convert(html_path, output_path)
+            os.unlink(html_path)
+            
+            self.update_progress(input_path, 100)
+            return {
+                'success': True,
+                'output_path': output_path,
+                'method': 'html_fallback',
+                'size': self.get_output_size(output_path)
+            }
+        except Exception as e:
+            error_messages.append(f"HTML fallback failed: {str(e)}")
+            print(f"[ExcelToPdf] HTML fallback failed: {e}")
             
         # 所有策略都失败
         return {

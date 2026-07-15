@@ -7,22 +7,32 @@ function buildAuthHeaders(token) {
 
 export const AuthService = {
   async getLoginUrl({ redirectUri, state } = {}) {
-    const apiBaseUrl = await getApiBaseUrl();
-    const res = await axios.post(`${apiBaseUrl}/api/auth/login-url`, {
-      redirect_uri: redirectUri,
-      state,
-    });
-    return res.data;
+    try {
+      const apiBaseUrl = await getApiBaseUrl();
+      const res = await axios.post(`${apiBaseUrl}/api/auth/login-url`, {
+        redirect_uri: redirectUri,
+        state,
+      });
+      return res.data;
+    } catch (error) {
+      const msg = error?.response?.data?.detail || error?.message || '获取登录地址失败';
+      throw new Error(msg);
+    }
   },
 
   async exchangeOAuthCode({ code, state, redirectUri }) {
-    const apiBaseUrl = await getApiBaseUrl();
-    const res = await axios.post(`${apiBaseUrl}/api/auth/oauth-exchange`, {
-      code,
-      state,
-      redirectUri,
-    });
-    return res.data;
+    try {
+      const apiBaseUrl = await getApiBaseUrl();
+      const res = await axios.post(`${apiBaseUrl}/api/auth/oauth-exchange`, {
+        code,
+        state,
+        redirectUri,
+      });
+      return res.data;
+    } catch (error) {
+      const msg = error?.response?.data?.detail || error?.message || 'OAuth登录失败，请重试';
+      throw new Error(msg);
+    }
   },
 
   async checkLogin(token) {

@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from typing import Optional, List
 from pydantic import BaseModel
-from backend.services.converter_service import ConverterService, UPLOAD_DIR
+from backend.services.converter_service import ConverterService, UPLOAD_DIR, DOWNLOAD_DIR
 from backend.services.user_center_service import UserCenterService, UserCenterError
 from backend.utils.logger import logger
 from backend.utils.file_handler import FileHandler
@@ -31,7 +31,7 @@ validator = Validator()
 user_center_service = UserCenterService()
 
 AUTH_BASE_URL = "https://api-web.kunqiongai.com"
-LOGIN_SECRET_KEY = os.environ.get("DESKTOP_LOGIN_SECRET_KEY", "7530bfb1ad6c41627b0f0620078fa5ed")
+LOGIN_SECRET_KEY = os.environ.get("DESKTOP_LOGIN_SECRET_KEY", "")
 MEMBERSHIP_SUBSITE_NAME = os.environ.get("MEMBERSHIP_SUBSITE_NAME", "https://doc.kunqiongai.com/")
 TRIAL_DAYS = int(os.environ.get("MEMBERSHIP_TRIAL_DAYS", "7"))
 MEMBERSHIP_PAY_PAGE = os.environ.get("MEMBERSHIP_PAY_PAGE", "https://kunqiongai.com/web_member_pay.html")
@@ -39,11 +39,11 @@ OAUTH_AUTHORIZE_URL = os.environ.get("OAUTH_AUTHORIZE_URL", "https://login.kunqi
 OAUTH_TOKEN_URL = os.environ.get("OAUTH_TOKEN_URL", "https://login.kunqiongai.com/api/oauth/token")
 OAUTH_LOGIN_URL = os.environ.get("OAUTH_LOGIN_URL", "https://login.kunqiongai.com/login.html")
 OAUTH_SCOPE = os.environ.get("OAUTH_SCOPE", "basic")
-DEV_OAUTH_CLIENT_ID = os.environ.get("DEV_OAUTH_CLIENT_ID", "app_971b24a9955eae3b")
-DEV_OAUTH_CLIENT_SECRET = os.environ.get("DEV_OAUTH_CLIENT_SECRET", "eeb1956c5dc4b56d423046c56b23d406")
+DEV_OAUTH_CLIENT_ID = os.environ.get("DEV_OAUTH_CLIENT_ID", "")
+DEV_OAUTH_CLIENT_SECRET = os.environ.get("DEV_OAUTH_CLIENT_SECRET", "")
 DEV_OAUTH_REDIRECT_URI = os.environ.get("DEV_OAUTH_REDIRECT_URI", "http://localhost:5176/oauth/callback")
-PROD_OAUTH_CLIENT_ID = os.environ.get("PROD_OAUTH_CLIENT_ID", "app_d2765ab4687d35dd")
-PROD_OAUTH_CLIENT_SECRET = os.environ.get("PROD_OAUTH_CLIENT_SECRET", "7ea69872de3809c9092fa7d386e54d66")
+PROD_OAUTH_CLIENT_ID = os.environ.get("PROD_OAUTH_CLIENT_ID", "")
+PROD_OAUTH_CLIENT_SECRET = os.environ.get("PROD_OAUTH_CLIENT_SECRET", "")
 PROD_OAUTH_REDIRECT_URI = os.environ.get("PROD_OAUTH_REDIRECT_URI", "https://doc.kunqiongai.com/oauth/callback")
 TRIAL_STATE_CACHE = {}
 TRIAL_STATE_LOCK = threading.Lock()
@@ -197,6 +197,37 @@ def _first_non_blank(*values) -> str:
 
 GUEST_TOKEN = "__guest_bypass_token__"
 
+GUEST_USER_INFO = {
+    "id": "guest_001",
+    "user_id": "guest_001",
+    "username": "访客",
+    "nickname": "访客用户",
+    "email": "",
+    "phone": "",
+    "avatar": "",
+}
+
+GUEST_PROFILE = {
+    "user_id": "guest_001",
+    "username": "访客",
+    "nickname": "访客用户",
+    "email": "",
+    "phone": "",
+    "avatar": "",
+    "is_vip": False,
+    "vip_level": 0,
+    "access_state": "free",
+    "remaining_daily_count": 3,
+    "remaining_days": 0,
+    "allow_batch": False,
+    "trial_active": False,
+    "payment_url": "",
+    "payment_auth_expired": False,
+    "access_code": "",
+    "daily_used_count": 0,
+    "daily_limit": 3,
+}
+
 def _extract_api_web_token(request: Request) -> str:
     token = request.headers.get("token")
     if token:
@@ -217,6 +248,12 @@ def _request_meta(request: Request) -> dict:
 
 
 def _resolve_upstream_token(local_token: str) -> str:
+    if local_token == GUEST_TOKEN:
+        raise HTTPException(status_code=401, detail={
+            "success": False,
+            "code": "login_expired",
+            "message": "访客用户不支持支付功能，请登录后重试",
+        })
     now = time.time()
     with UPSTREAM_TOKEN_VALIDATION_LOCK:
         cached = UPSTREAM_TOKEN_VALIDATION_CACHE.get(local_token)
@@ -903,16 +940,22 @@ async def exchange_oauth_code(payload: OAuthExchangePayload, request: Request):
 @router.get("/auth/check-login")
 async def check_login(request: Request):
     api_web_token = _extract_api_web_token(request)
+    if api_web_token == GUEST_TOKEN:
+        return {"success": True, "code": "ok", "data": {"logged_in": False}}
     try:
         profile = user_center_service.get_user_profile(api_web_token, allow_missing=True)
         return {"success": True, "code": "ok", "data": {"logged_in": bool(profile)}}
     except UserCenterError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    except Exception:
+        return {"success": True, "code": "ok", "data": {"logged_in": False}}
 
 
 @router.get("/auth/user-info")
 async def get_user_info(request: Request):
     api_web_token = _extract_api_web_token(request)
+    if api_web_token == GUEST_TOKEN:
+        return {"success": True, "code": "ok", "data": dict(GUEST_USER_INFO)}
     try:
         return {"success": True, "code": "ok", "data": user_center_service.get_user_info(api_web_token)}
     except UserCenterError as exc:
@@ -925,6 +968,8 @@ async def get_user_info(request: Request):
 @router.get("/auth/user-profile")
 async def get_user_profile(request: Request):
     api_web_token = _extract_api_web_token(request)
+    if api_web_token == GUEST_TOKEN:
+        return {"success": True, "code": "ok", "data": dict(GUEST_PROFILE)}
     started_at = time.time()
     try:
         payload = _merge_profile_with_membership(api_web_token)
@@ -946,6 +991,8 @@ async def get_user_profile(request: Request):
 @router.get("/user-center/recent-records")
 async def get_recent_records(request: Request, limit: int = 10):
     api_web_token = _extract_api_web_token(request)
+    if api_web_token == GUEST_TOKEN:
+        return {"success": True, "code": "ok", "data": []}
     try:
         return {"success": True, "code": "ok", "data": user_center_service.get_recent_records(api_web_token, limit)}
     except UserCenterError as exc:
@@ -958,6 +1005,8 @@ async def get_recent_records(request: Request, limit: int = 10):
 @router.post("/auth/logout")
 async def logout(request: Request):
     api_web_token = _extract_api_web_token(request)
+    if api_web_token == GUEST_TOKEN:
+        return {"success": True, "code": "ok"}
     try:
         user_center_service.logout(api_web_token)
     except UserCenterError:
@@ -1007,16 +1056,19 @@ async def convert_json(
             original_filename=file.filename,
             **options
         )
-        user_center_service.record_processing(
-            api_web_token,
-            tool_name=f"{source_format.upper()} To {target_format.upper()}",
-            file_name=file.filename,
-            file_size=getattr(file, "size", None),
-            source_format=source_format,
-            target_format=target_format,
-            status="completed",
-            result_path=result.get("download_url"),
-        )
+        try:
+            user_center_service.record_processing(
+                api_web_token,
+                tool_name=f"{source_format.upper()} To {target_format.upper()}",
+                file_name=file.filename,
+                file_size=getattr(file, "size", None),
+                source_format=source_format,
+                target_format=target_format,
+                status="completed",
+                result_path=result.get("download_url"),
+            )
+        except Exception:
+            pass
         
         return result
     except UserCenterError as e:
@@ -1025,32 +1077,38 @@ async def convert_json(
     except ValueError as e:
         print(f"ValueError during conversion: {e}")
         if api_web_token:
-            user_center_service.record_processing(
-                api_web_token,
-                tool_name=f"{source_format.upper()} To {target_format.upper()}",
-                file_name=file.filename,
-                file_size=getattr(file, "size", None),
-                source_format=source_format,
-                target_format=target_format,
-                status="failed",
-                result_message=str(e),
-            )
+            try:
+                user_center_service.record_processing(
+                    api_web_token,
+                    tool_name=f"{source_format.upper()} To {target_format.upper()}",
+                    file_name=file.filename,
+                    file_size=getattr(file, "size", None),
+                    source_format=source_format,
+                    target_format=target_format,
+                    status="failed",
+                    result_message=str(e),
+                )
+            except Exception:
+                pass
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         print(f"Unexpected error during conversion: {e}")
         import traceback
         traceback.print_exc()
         if api_web_token:
-            user_center_service.record_processing(
-                api_web_token,
-                tool_name=f"{source_format.upper()} To {target_format.upper()}",
-                file_name=file.filename,
-                file_size=getattr(file, "size", None),
-                source_format=source_format,
-                target_format=target_format,
-                status="failed",
-                result_message=str(e),
-            )
+            try:
+                user_center_service.record_processing(
+                    api_web_token,
+                    tool_name=f"{source_format.upper()} To {target_format.upper()}",
+                    file_name=file.filename,
+                    file_size=getattr(file, "size", None),
+                    source_format=source_format,
+                    target_format=target_format,
+                    status="failed",
+                    result_message=str(e),
+                )
+            except Exception:
+                pass
         raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
     finally:
         # 5. 清理临时上传文件
@@ -1257,16 +1315,19 @@ async def convert_general(
             **options
         )
         print(f"[API] 转换完成，结果: {result}")
-        user_center_service.record_processing(
-            api_web_token,
-            tool_name=f"{source_format.upper()} To {target_format.upper()}",
-            file_name=file.filename,
-            file_size=getattr(file, "size", None),
-            source_format=source_format,
-            target_format=target_format,
-            status="completed",
-            result_path=result.get("download_url"),
-        )
+        try:
+            user_center_service.record_processing(
+                api_web_token,
+                tool_name=f"{source_format.upper()} To {target_format.upper()}",
+                file_name=file.filename,
+                file_size=getattr(file, "size", None),
+                source_format=source_format,
+                target_format=target_format,
+                status="completed",
+                result_path=result.get("download_url"),
+            )
+        except Exception:
+            pass  # DB记录失败不影响转换结果
         
         return result
     except UserCenterError as e:
@@ -1275,16 +1336,19 @@ async def convert_general(
     except ValueError as e:
         print(f"[API] ValueError during conversion: {e}")
         if api_web_token and source_format:
-            user_center_service.record_processing(
-                api_web_token,
-                tool_name=f"{source_format.upper()} To {target_format.upper()}",
-                file_name=file.filename,
-                file_size=getattr(file, "size", None),
-                source_format=source_format,
-                target_format=target_format,
-                status="failed",
-                result_message=str(e),
-            )
+            try:
+                user_center_service.record_processing(
+                    api_web_token,
+                    tool_name=f"{source_format.upper()} To {target_format.upper()}",
+                    file_name=file.filename,
+                    file_size=getattr(file, "size", None),
+                    source_format=source_format,
+                    target_format=target_format,
+                    status="failed",
+                    result_message=str(e),
+                )
+            except Exception:
+                pass
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
@@ -1321,6 +1385,27 @@ async def member_package_info(
     previous_active: Optional[bool] = Form(None),
 ):
     api_web_token = _extract_api_web_token(request)
+    if api_web_token == GUEST_TOKEN:
+        return {
+            "success": True,
+            "code": "ok",
+            "data": {
+                "packages": [],
+                "web_member_expire_at": None,
+                "web_member_active": False,
+                "subsite_name": MEMBERSHIP_SUBSITE_NAME,
+                "access_state": "free",
+                "trial_active": False,
+                "trial_started_at": None,
+                "trial_expire_time": None,
+                "remaining_daily_count": 3,
+                "remaining_days": 0,
+                "daily_limit": 3,
+                "is_vip": False,
+                "vip_level": 0,
+                "subsite": {},
+            },
+        }
     started_at = time.time()
     membership = None
     if force_sync:
@@ -1384,6 +1469,11 @@ async def create_member_order(
     pay_type: int = Form(...),
 ):
     api_web_token = _extract_api_web_token(request)
+    if api_web_token == GUEST_TOKEN:
+        raise HTTPException(status_code=400, detail={
+            "success": False, "code": "guest_not_allowed",
+            "message": "访客用户不支持购买会员，请登录后重试",
+        })
     upstream_token = _resolve_upstream_token(api_web_token)
     payload = _request_api_web_form(
         "/user/create_web_member_order",
@@ -1409,6 +1499,11 @@ async def check_member_order_status(
     order_no: str = Form(...),
 ):
     api_web_token = _extract_api_web_token(request)
+    if api_web_token == GUEST_TOKEN:
+        raise HTTPException(status_code=400, detail={
+            "success": False, "code": "guest_not_allowed",
+            "message": "访客用户不支持购买会员，请登录后重试",
+        })
     upstream_token = _resolve_upstream_token(api_web_token)
     payload = _request_api_web_form(
         "/user/check_web_member_order_paystatus",
@@ -1436,6 +1531,13 @@ async def check_member_order_status(
 @router.get("/user-center/payment-page-url")
 async def get_payment_page_url(request: Request, return_url: Optional[str] = None):
     api_web_token = _extract_api_web_token(request)
+    if api_web_token == GUEST_TOKEN:
+        return {
+            "success": True, "code": "ok",
+            "data": {"payment_url": "", "subsite_name": MEMBERSHIP_SUBSITE_NAME,
+                      "access_state": "free", "payment_auth_expired": False, "requires_relogin": False,
+                      "message": "访客用户无需支付，使用限制次数即可"},
+        }
     effective_return_url = _normalize_return_url(return_url, request)
     try:
         _resolve_upstream_token(api_web_token)
@@ -1465,7 +1567,48 @@ async def get_payment_page_url(request: Request, return_url: Optional[str] = Non
         }
     }
 
+@router.post("/batch-download")
+async def batch_download(request: Request, files: List[str] = Form(...)):
+    """批量打包下载 - 将多个转换结果打包为ZIP文件"""
+    import io
+    import zipfile
+    from fastapi.responses import StreamingResponse
+
+    if not files:
+        raise HTTPException(status_code=400, detail="No files specified")
+
+    # 安全检查：防止路径遍历攻击
+    safe_files = []
+    for f in files:
+        basename = os.path.basename(f)  # 剥离任何路径信息
+        filepath = os.path.join(DOWNLOAD_DIR, basename)
+        if not os.path.isfile(filepath):
+            continue  # 跳过不存在的文件
+        safe_files.append((basename, filepath))
+
+    if not safe_files:
+        raise HTTPException(status_code=404, detail="No valid files found for download")
+
+    # 在内存中创建 ZIP
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for basename, filepath in safe_files:
+            zf.write(filepath, arcname=basename)
+    zip_buffer.seek(0)
+
+    # 生成带时间戳的文件名
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    zip_filename = f"converted-{timestamp}.zip"
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{zip_filename}"',
+        },
+    )
+
 
 @router.get("/health")
 async def health_check():
-    return {"status": "healthy", "supported_conversions": converter_service.get_supported_conversions()}
+    return {"status": "ok"}

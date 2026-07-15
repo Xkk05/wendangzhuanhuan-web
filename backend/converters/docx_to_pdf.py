@@ -43,9 +43,14 @@ class DocxToPdfConverter(BaseConverter):
         """检查是否有 Microsoft Word"""
         try:
             import win32com.client
-            word = win32com.client.Dispatch("Word.Application")
-            word.Quit()
-            return True
+            import pythoncom
+            pythoncom.CoInitialize()
+            try:
+                word = win32com.client.Dispatch("Word.Application")
+                word.Quit()
+                return True
+            finally:
+                pythoncom.CoUninitialize()
         except:
             return False
     
@@ -71,6 +76,8 @@ class DocxToPdfConverter(BaseConverter):
             word = win32com.client.Dispatch("Word.Application")
             word.Visible = False
             word.DisplayAlerts = 0  # 不显示警告
+            try: word.AutomationSecurity = 3  # msoAutomationSecurityForceDisable
+            except: pass
             
             # 打开文档
             doc = word.Documents.Open(input_path, ReadOnly=True)
@@ -95,6 +102,12 @@ class DocxToPdfConverter(BaseConverter):
             try:
                 if word:
                     word.Quit()
+            except:
+                pass
+            # Bug#10: Force kill zombie Word process
+            try:
+                import os as _os_docx
+                _os_docx.system('taskkill /f /im WINWORD.EXE 2>nul >nul')
             except:
                 pass
             
