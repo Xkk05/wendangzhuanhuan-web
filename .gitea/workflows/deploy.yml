@@ -1,0 +1,116 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy with Docker Compose
+    runs-on: ubuntu-latest
+
+    env:
+      DEPLOY_DIR: /www/wwwroot/converter-app
+      COMPOSE_FILE: docker-compose.baota.yml
+      DEPLOY_HEALTH_URL: http://127.0.0.1:3016/
+      MEMBERSHIP_SUBSITE_NAME: https://doc.kunqiongai.com/
+      MEMBERSHIP_PAY_PAGE: https://kunqiongai.com/web_member_pay.html
+      OAUTH_TOKEN_URL: https://login.kunqiongai.com/api/oauth/token
+      PROD_OAUTH_CLIENT_ID: ${{ secrets.PROD_OAUTH_CLIENT_ID }}
+      PROD_OAUTH_CLIENT_SECRET: ${{ secrets.PROD_OAUTH_CLIENT_SECRET }}
+      DESKTOP_LOGIN_SECRET_KEY: ${{ secrets.DESKTOP_LOGIN_SECRET_KEY }}
+      USER_CENTER_DB_PASSWORD: ${{ secrets.USER_CENTER_DB_PASSWORD }}
+
+    steps:
+      - name: Checkout repository to deploy directory
+        run: |
+          set -eu
+
+          REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
+          REF_NAME="${{ github.ref_name }}"
+          SHA="${{ github.sha }}"
+
+          mkdir -p "$DEPLOY_DIR"
+          cd "$DEPLOY_DIR"
+
+          if [ ! -d .git ]; then
+            git init
+          fi
+
+          git remote remove origin >/dev/null 2>&1 || true
+          git remote add origin "$REPO_URL"
+          git fetch --depth=1 origin "$SHA" || git fetch --depth=1 origin "$REF_NAME"
+          git checkout --force FETCH_HEAD
+          git clean -fdx -e docker-data/ -e .env
+
+      - name: Check deployment dependencies
+        run: |
+          set -eu
+
+          docker --version
+          if docker compose version >/dev/null 2>&1; then
+            echo "COMPOSE_CMD=docker compose" >> "$GITHUB_ENV"
+          elif command -v docker-compose >/dev/null 2>&1; then
+            echo "COMPOSE_CMD=docker-compose" >> "$GITHUB_ENV"
+          else
+            echo "Docker Compose is not installed on this runner."
+            exit 1
+          fi
+
+      - name: Write production environment
+        run: |
+          set -eu
+          cd "$DEPLOY_DIR"
+          umask 077
+
+          cat > .env <<EOF
+          MEMBERSHIP_SUBSITE_NAME=${MEMBERSHIP_SUBSITE_NAME:-https://doc.kunqiongai.com/}
+          PROD_OAUTH_CLIENT_ID=${PROD_OAUTH_CLIENT_ID}
+          PROD_OAUTH_CLIENT_SECRET=${PROD_OAUTH_CLIENT_SECRET}
+          MEMBERSHIP_PAY_PAGE=${MEMBERSHIP_PAY_PAGE:-https://kunqiongai.com/web_member_pay.html}
+          OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-https://login.kunqiongai.com/api/oauth/token}
+          DESKTOP_LOGIN_SECRET_KEY=${DESKTOP_LOGIN_SECRET_KEY}
+          USER_CENTER_DB_PASSWORD=${USER_CENTER_DB_PASSWORD}
+          EOF
+
+      - name: Build and restart services
+        run: |
+          set -eu
+          cd "$DEPLOY_DIR"
+
+          $COMPOSE_CMD -f "$COMPOSE_FILE" config
+          $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build --remove-orphans
+          $COMPOSE_CMD -f "$COMPOSE_FILE" ps
+
+      - name: Health check
+        run: |
+          set -eu
+          cd "$DEPLOY_DIR"
+
+          HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:3016/}"
+          echo "Checking $HEALTH_URL"
+
+          for i in $(seq 1 30); do
+            if curl -fsS "$HEALTH_URL" >/dev/null; then
+              echo "Deployment is healthy."
+              exit 0
+            fi
+            echo "Waiting for service... ($i/30)"
+            sleep 5
+          done
+
+          echo "Health check failed. Recent logs:"
+          $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=120
+          exit 1
+
+      - name: Cleanup old Docker images
+        if: success()
+        run: |
+          docker image prune -f
