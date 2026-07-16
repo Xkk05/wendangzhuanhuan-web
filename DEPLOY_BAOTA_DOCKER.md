@@ -8,7 +8,7 @@
 
 - 前端容器：`converter-frontend`
 - 后端容器：`converter-backend`
-- 对外访问端口：`3016`
+- 对外访问端口：`3017`
 - 后端仅在 Docker 内网暴露，不直接映射公网端口
 - 上传、下载、日志持久化目录：`./docker-data/backend`
 
@@ -93,7 +93,7 @@ docker compose -f docker-compose.baota.yml down
 容器启动后，前端会监听服务器本机：
 
 ```text
-127.0.0.1:3016
+127.0.0.1:3017
 ```
 
 你可以在宝塔网站里：
@@ -102,7 +102,7 @@ docker compose -f docker-compose.baota.yml down
 2. 配置反向代理到：
 
 ```text
-http://127.0.0.1:3016
+http://127.0.0.1:3017
 ```
 
 因为前端容器里的 Nginx 已经处理了：
@@ -111,7 +111,7 @@ http://127.0.0.1:3016
 - `/api/`
 - `/downloads/`
 
-所以宝塔层只要代理到 `3016` 即可，不需要再额外拆前后端代理。
+所以宝塔层只要代理到 `3017` 即可，不需要再额外拆前后端代理。
 
 ## 数据持久化
 
@@ -173,7 +173,7 @@ client_max_body_size 200m;
 
 检查：
 
-- 宝塔站点是否反代到了 `127.0.0.1:3016`
+- 宝塔站点是否反代到了 `127.0.0.1:3017`
 - 服务器防火墙是否放行 `80/443`
 - 容器是否正常运行
 
@@ -182,7 +182,7 @@ client_max_body_size 200m;
 浏览器请求路径：
 
 1. 用户访问宝塔站点域名
-2. 宝塔反向代理到 `converter-frontend:3016`
+2. 宝塔反向代理到 `converter-frontend:3017`
 3. 前端容器内 Nginx 将 `/api` 和 `/downloads` 转发到后端容器
 4. 后端 FastAPI 执行转换并返回结果
 

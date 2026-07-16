@@ -19,7 +19,7 @@ jobs:
     env:
       DEPLOY_DIR: /www/wwwroot/converter-app
       COMPOSE_FILE: docker-compose.baota.yml
-      DEPLOY_HEALTH_URL: http://127.0.0.1:3016/
+      DEPLOY_HEALTH_URL: http://127.0.0.1:3017/
       MEMBERSHIP_SUBSITE_NAME: https://doc.kunqiongai.com/
       MEMBERSHIP_PAY_PAGE: https://kunqiongai.com/web_member_pay.html
       OAUTH_TOKEN_URL: https://login.kunqiongai.com/api/oauth/token
@@ -94,7 +94,7 @@ jobs:
           set -eu
           cd "$DEPLOY_DIR"
 
-          HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:3016/}"
+          HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:3017/}"
           echo "Checking $HEALTH_URL"
 
           for i in $(seq 1 30); do
