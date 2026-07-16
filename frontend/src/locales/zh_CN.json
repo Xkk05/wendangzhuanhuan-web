@@ -28,6 +28,7 @@
   "home": {
     "title": "ConvertTool",
     "subtitle": "简单、快速、安全的在线文件转换工具",
+    "all_categories": "全部分类",
     "categories": {
       "docx": "DOCX 转换",
       "docx_desc": "Word 文档转换为 PDF, 图片, 文本等",
@@ -59,6 +60,11 @@
   "loginModal": {
     "title": "鲲穹账号登录",
     "subtitle": "体验更多功能，请先登录",
+    "message": "请先登录账号，即可使用所有转换功能",
+    "loginButton": "登录鲲穹账号",
+    "cancel": "稍后再说",
+    "waiting_login": "请在新窗口中完成登录...",
+    "cancel_login": "取消登录",
     "logged_in_as": "已登录鲲穹账户",
     "logout": "退出当前账号",
     "close": "关闭窗口",
@@ -233,6 +239,13 @@
     "download": "下载",
     "download_file": "下载文件",
     "delete": "删除",
+    "delete_selected": "删除选中",
+    "convert_selected": "转换选中 ({{count}})",
+    "estimated_time": "预计耗时",
+    "can_background": "可后台处理",
+    "stage_starting": "正在准备...",
+    "stage_converting": "正在转换 {{current}}/{{total}}...",
+    "download_success": "下载完成",
     "error": "错误",
     "progress_processing": "正在处理 {{current}} / {{total}}",
     "zip_download_title": "打包下载 ZIP",

@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -62,6 +62,10 @@ function ToolDetailContent({ toolName, onBack }) {
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [downloadingFileId, setDownloadingFileId] = useState(null); // 记录要下载的文件ID
   const [progress, setProgress] = useState({ current: 0, total: 0, percent: 0 });
+  const [selectedFiles, setSelectedFiles] = useState(new Set());
+  const [estimatedTime, setEstimatedTime] = useState(null);
+  const [currentStage, setCurrentStage] = useState('');
+  const conversionStartRef = useRef(null);
   const abortControllerRef = useRef(null);
   const [isWatermarkExpanded, setIsWatermarkExpanded] = useState(false);
   const [isPdfPagesExpanded, setIsPdfPagesExpanded] = useState(false);
@@ -74,6 +78,7 @@ function ToolDetailContent({ toolName, onBack }) {
   // 监听 toolName 变化,切换功能时清空文件列表
   useEffect(() => {
     setFiles([]);
+    setSelectedFiles(new Set());
     setConversionResults({});
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (folderInputRef.current) folderInputRef.current.value = '';
@@ -403,22 +408,103 @@ function ToolDetailContent({ toolName, onBack }) {
     if (folderInputRef.current) folderInputRef.current.value = '';
   };
 
-  const handleDownloadAll = (e) => {
+  // ---- 选择态 & 批量操作 ----
+  const handleSelectAll = useCallback(() => {
+    setSelectedFiles(new Set(files.map(f => f.id)));
+  }, [files]);
+
+  const handleDeselectAll = useCallback(() => {
+    setSelectedFiles(new Set());
+  }, []);
+
+  const handleToggleFileSelect = useCallback((fileId) => {
+    setSelectedFiles(prev => {
+      const next = new Set(prev);
+      if (next.has(fileId)) next.delete(fileId);
+      else next.add(fileId);
+      return next;
+    });
+  }, []);
+
+  const handleDeleteSelected = useCallback(() => {
+    setFiles(prev => prev.filter(f => !selectedFiles.has(f.id)));
+    setConversionResults(prev => { const n = { ...prev }; selectedFiles.forEach(id => delete n[id]); return n; });
+    setSelectedFiles(new Set());
+  }, [selectedFiles]);
+
+  const handleDownloadAll = async (e) => {
     e.stopPropagation();
     const hasDownloadableFiles = Object.values(conversionResults).some(res => res && !res.error && res.download_url);
     if (!hasDownloadableFiles) {
       toast.error(t('toolDetail.messages.no_downloadable_files'));
       return;
     }
+    // Single file download: skip modal, download directly
+    const downloadable = Object.values(conversionResults).filter(
+      res => res && !res.error && res.download_url && res.download_url !== '#' && !res.download_url.startsWith('#')
+    );
+    if (downloadable.length === 1) {
+      setDownloadingFileId(null);
+      // Direct download – build url and trigger save
+      const apiBaseUrl = await getApiBaseUrl();
+      const res = downloadable[0];
+      const url = `${apiBaseUrl}${res.download_url}`;
+      const filename = res.display_name || decodeURIComponent(res.download_url.split('/').pop()) || `file-${Date.now()}`;
+      if (window.electronAPI) {
+        const dirPath = await window.electronAPI.selectDirectory();
+        if (dirPath) {
+          await window.electronAPI.downloadFile(url, dirPath, filename);
+          toast.success(t('toolDetail.messages.download_success'));
+        }
+      } else if (window.showSaveFilePicker) {
+        try {
+          const response = await fetch(url);
+          const blob = await response.blob();
+          const handle = await window.showSaveFilePicker({ suggestedName: filename });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+        } catch (err) {
+          if (err.name !== 'AbortError') saveAs(url, filename);
+        }
+      } else {
+        saveAs(url, filename);
+      }
+      return;
+    }
     setDownloadingFileId(null); // 清空单个文件ID，表示下载全部
     setShowDownloadModal(true);
   };
 
-  const handleSingleFileDownload = (e, fileId) => {
+  const handleSingleFileDownload = async (e, fileId) => {
     e.preventDefault();
     e.stopPropagation();
-    setDownloadingFileId(fileId); // 设置要下载的文件ID
-    setShowDownloadModal(true);
+    const result = conversionResults[fileId];
+    if (!result || result.error || !result.download_url) return;
+    setDownloadingFileId(fileId);
+    const apiBaseUrl = await getApiBaseUrl();
+    const url = `${apiBaseUrl}${result.download_url}`;
+    const filename = result.display_name || decodeURIComponent(result.download_url.split('/').pop()) || `file-${Date.now()}`;
+    if (window.electronAPI) {
+      const dirPath = await window.electronAPI.selectDirectory();
+      if (dirPath) {
+        await window.electronAPI.downloadFile(url, dirPath, filename);
+        toast.success(t('toolDetail.messages.download_success'));
+      }
+    } else if (window.showSaveFilePicker) {
+      try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const handle = await window.showSaveFilePicker({ suggestedName: filename });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      } catch (err) {
+        if (err.name !== 'AbortError') saveAs(url, filename);
+      }
+    } else {
+      saveAs(url, filename);
+    }
   };
 
   const handleBatchDownload = async () => {
@@ -693,7 +779,18 @@ function ToolDetailContent({ toolName, onBack }) {
   }, [t]);
 
   const handleConvert = async () => {
-    if (files.length === 0) return;
+    const filesToConvert = selectedFiles.size > 0 ? files.filter(f => selectedFiles.has(f.id)) : files;
+    if (filesToConvert.length === 0) return;
+
+    const totalEstimate = filesToConvert.reduce((sum, f) => {
+      const sizeMB = f.file.size / (1024 * 1024);
+      if (/PPT|Video|Excel/i.test(source)) return sum + Math.ceil(sizeMB * 3 + 5);
+      if (/PDF/.test(source) && /PNG|JPG|Image/.test(target)) return sum + Math.ceil(sizeMB * 2 + 3);
+      return sum + Math.ceil(sizeMB * 1.5 + 2);
+    }, 0);
+    setEstimatedTime(totalEstimate);
+    setCurrentStage(t('toolDetail.stage_starting'));
+    conversionStartRef.current = Date.now();
 
     // Validation
     // PDF/DOCX Page Range
@@ -738,7 +835,7 @@ function ToolDetailContent({ toolName, onBack }) {
     const hasFeatureAccess = requireFeatureAccess({
       navigate,
       returnTo: `${location.pathname}${location.search}${location.hash}`,
-      filesCount: files.length,
+      filesCount: filesToConvert.length,
       disableWatermark: requiresNoWatermarkPermission,
       t,
     });
@@ -749,7 +846,7 @@ function ToolDetailContent({ toolName, onBack }) {
 
     setIsConverting(true);
     setConversionResults({});
-    setProgress({ current: 0, total: files.length, percent: 0 });
+    setProgress({ current: 0, total: filesToConvert.length, percent: 0 });
     
     // Create new AbortController
     abortControllerRef.current = new AbortController();
@@ -757,7 +854,7 @@ function ToolDetailContent({ toolName, onBack }) {
     
     // 检查是否是PPT转视频，给出特殊提示
     const isPptToVideo = (source === 'PPT' || source === 'PPTX') && target === 'Video';
-    if (isPptToVideo && files.length > 0) {
+    if (isPptToVideo && filesToConvert.length > 0) {
       toast(t('toolDetail.messages.ppt_video_wait'), { 
         duration: 4000,
         icon: '⏱️'
@@ -770,12 +867,13 @@ function ToolDetailContent({ toolName, onBack }) {
 
     try {
       // Loop through all files
-      for (let i = 0; i < files.length; i++) {
+      for (let i = 0; i < filesToConvert.length; i++) {
         if (signal.aborted) {
           throw new Error(t('toolDetail.messages.operation_cancelled'));
         }
 
-        const fileObj = files[i];
+        setCurrentStage(t('toolDetail.stage_converting', { current: i + 1, total: filesToConvert.length }));
+        const fileObj = filesToConvert[i];
         const file = fileObj.file;
         
         try {
@@ -1039,7 +1137,7 @@ function ToolDetailContent({ toolName, onBack }) {
         setProgress(prev => ({
           ...prev,
           current: i + 1,
-          percent: Math.round(((i + 1) / files.length) * 100)
+          percent: Math.round(((i + 1) / filesToConvert.length) * 100)
         }));
       }
       
@@ -2201,8 +2299,13 @@ function ToolDetailContent({ toolName, onBack }) {
         <div className="file-list-header">
           <h3 className="file-list-title">{t('toolDetail.file_list')} ({files.length})</h3>
           <div className="file-list-actions">
-            <button className="file-action-btn" onClick={() => {}} disabled={files.length === 0}>{t('toolDetail.select_all')}</button>
-            <button className="file-action-btn" onClick={() => {}} disabled={files.length === 0}>{t('toolDetail.deselect_all')}</button>
+            <button className="file-action-btn" onClick={handleSelectAll} disabled={files.length === 0 || isConverting}>{t('toolDetail.select_all')}</button>
+            <button className="file-action-btn" onClick={handleDeselectAll} disabled={files.length === 0 || isConverting || selectedFiles.size === 0}>{t('toolDetail.deselect_all')}</button>
+            {selectedFiles.size > 0 && !isConverting && (
+              <button className="file-action-btn file-action-btn-danger" onClick={handleDeleteSelected}>
+                {t('toolDetail.delete_selected')} ({selectedFiles.size})
+              </button>
+            )}
             {isConverting ? (
               <button 
                 className="file-action-btn file-action-btn-danger"
@@ -2216,11 +2319,15 @@ function ToolDetailContent({ toolName, onBack }) {
                 onClick={handleConvert}
                 disabled={files.length === 0}
               >
-                {t('toolDetail.start_conversion')}
+                {selectedFiles.size > 0 ? t('toolDetail.convert_selected', { count: selectedFiles.size }) : t('toolDetail.start_conversion')}
               </button>
             )}
-            <button className="file-action-btn" onClick={handleClearAll} disabled={files.length === 0 || isConverting}>{t('toolDetail.clear_all')}</button>
-            <button className="file-action-btn" disabled={files.length === 0 || isConverting} onClick={handleDownloadAll}>{t('toolDetail.download_all')}</button>
+            <button className="file-action-btn" onClick={handleClearAll} disabled={files.length === 0 || isConverting}>
+              {t('toolDetail.clear_all')}
+            </button>
+            <button className="file-action-btn" disabled={files.length === 0 || isConverting} onClick={handleDownloadAll}>
+              {t('toolDetail.download_all')}
+            </button>
           </div>
         </div>
         
@@ -2236,6 +2343,17 @@ function ToolDetailContent({ toolName, onBack }) {
                 style={{ width: `${progress.percent}%` }}
               ></div>
             </div>
+            {estimatedTime && (
+              <div className="progress-estimate">
+                <span>{t('toolDetail.estimated_time')}: ~{estimatedTime}s</span>
+                {estimatedTime > 30 && (
+                  <span className="progress-bg-hint"> · {t('toolDetail.can_background')}</span>
+                )}
+              </div>
+            )}
+            {currentStage && (
+              <div className="progress-stage">{currentStage}</div>
+            )}
           </div>
         )}
         
@@ -2244,13 +2362,25 @@ function ToolDetailContent({ toolName, onBack }) {
             <div className="file-list-content">
               {files.map((fileObj) => (
                 <div key={fileObj.id} className="file-item-card">
+                  <div className="file-item-checkbox" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedFiles.has(fileObj.id)}
+                      onChange={() => handleToggleFileSelect(fileObj.id)}
+                      disabled={isConverting}
+                      className="file-checkbox-input"
+                    />
+                  </div>
                   <div className="file-item-left">
                     <div className={`file-icon-circle ${isConverting ? 'loading' : ''}`}>
                       <span className="file-type-text">{source}</span>
                       {isConverting && <div className="loading-ring"></div>}
                     </div>
                     <div className="file-info">
-                      <div className="file-name" title={fileObj.file.name}>{fileObj.file.name}</div>
+                      <div className="file-name" title={fileObj.file.name}>
+                        {fileObj.file.name}
+                        {selectedFiles.has(fileObj.id) && <span className="selected-badge" style={{marginLeft:6,fontSize:11,color:'#00a3ff'}}>✓</span>}
+                      </div>
                       <div className="file-size">{(fileObj.file.size / 1024).toFixed(2)} KB</div>
                     </div>
                   </div>

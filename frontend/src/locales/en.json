@@ -28,6 +28,7 @@
   "home": {
     "title": "ConvertTool",
     "subtitle": "Simple, fast, and secure online file conversion tool",
+    "all_categories": "All Categories",
     "categories": {
       "docx": "DOCX Conversion",
       "docx_desc": "Convert Word documents to PDF, images, text, etc.",
@@ -59,6 +60,9 @@
   "loginModal": {
     "title": "Kunqiong Account Login",
     "subtitle": "Experience more features, please login first",
+    "message": "Please log in to use all conversion features",
+    "loginButton": "Login with Kunqiong Account",
+    "cancel": "Maybe later",
     "logged_in_as": "Logged in as Kunqiong account",
     "logout": "Logout current account",
     "close": "Close window",
@@ -233,6 +237,13 @@
     "download": "Download",
     "download_file": "Download file",
     "delete": "Delete",
+    "delete_selected": "Delete Selected",
+    "convert_selected": "Convert Selected ({{count}})",
+    "estimated_time": "Estimated",
+    "can_background": "Can run in background",
+    "stage_starting": "Preparing...",
+    "stage_converting": "Converting {{current}}/{{total}}...",
+    "download_success": "Download complete",
     "error": "Error",
     "progress_processing": "Processing {{current}} / {{total}}",
     "zip_download_title": "Download as ZIP",

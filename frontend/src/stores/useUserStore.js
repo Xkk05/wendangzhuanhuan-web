@@ -172,24 +172,47 @@ export const useUserStore = create(
         const returnTo = getSafeReturnTo(options.returnTo || get().pendingReturnTo || DEFAULT_RETURN_TO);
         const redirectUri = options.redirectUri || getDefaultRedirectUri();
         const generatedState = options.state || createOAuthState();
-        set({ isPolling: true, pendingReturnTo: returnTo, isLoginModalVisible: false });
+        set({ isPolling: true, pendingReturnTo: returnTo });
 
         try {
           const { loginUrl } = buildOAuthLoginUrl({
             state: generatedState,
             redirectUri,
           });
-          const state = generatedState;
-          if (!state || !loginUrl) {
+
+          if (!generatedState || !loginUrl) {
             throw new Error('Failed to create Kunqiong login URL');
           }
 
-          storeOAuthRequest({ state, returnTo });
+          storeOAuthRequest({ state: generatedState, returnTo });
 
           if (window.electronAPI?.openExternal) {
+            // Electron: 外部浏览器登录
+            set({ isLoginModalVisible: true });
             await window.electronAPI.openExternal(loginUrl);
           } else {
-            window.location.href = loginUrl;
+            // Web: 弹窗模式 — 标记弹窗以便 OAuthCallbackPage 识别
+            try {
+              localStorage.setItem('kq_login_mode', 'popup');
+            } catch { /* ignore */ }
+
+            const pw = 600;
+            const ph = 700;
+            const left = Math.max(0, (window.screen.width - pw) / 2);
+            const top = Math.max(0, (window.screen.height - ph) / 2);
+            const popup = window.open(
+              loginUrl,
+              'kq_login',
+              `width=${pw},height=${ph},left=${left},top=${top},scrollbars=yes`
+            );
+            if (!popup) {
+              // 弹窗被拦截 → 清除标记，降级为全页跳转
+              try { localStorage.removeItem('kq_login_mode'); } catch { /* ignore */ }
+              window.location.href = loginUrl;
+              return loginUrl;
+            }
+            // 保持登录弹窗可见（轮询中）
+            set({ isLoginModalVisible: true });
           }
 
           return loginUrl;
@@ -198,6 +221,16 @@ export const useUserStore = create(
           toast.error(error?.message || 'Failed to start login');
           throw error;
         }
+      },
+
+      /** 登录弹窗中用户点击取消时调用 */
+      cancelLoginProcess: () => {
+        set({
+          isPolling: false,
+          isLoginModalVisible: false,
+          pendingReturnTo: DEFAULT_RETURN_TO,
+        });
+        clearOAuthRequest();
       },
 
       refreshProfile: async (options = {}) => {
@@ -408,7 +441,11 @@ export const useUserStore = create(
       },
 
       requireFeatureAccess: ({ navigate, returnTo, filesCount = 1, disableWatermark = false, t }) => {
-        // 跳过登录：所有用户均可使用完整功能
+        const state = get();
+        if (!state.isLoggedIn || !state.token || state.token === '__guest_bypass_token__') {
+          state.showLoginModal(returnTo || DEFAULT_RETURN_TO);
+          return false;
+        }
         return true;
       },
 

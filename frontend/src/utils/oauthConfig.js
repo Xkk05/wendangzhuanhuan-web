@@ -13,7 +13,7 @@ export function resolveOAuthRedirectUri() {
   const { origin, hostname } = window.location;
   const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
   if (isLocalHost) {
-    return 'http://localhost:5176/oauth/callback';
+    return `${origin}/oauth/callback`;
   }
 
   if (window.electronAPI) {

@@ -5,6 +5,7 @@ import { ConfigProvider, theme as antTheme, App as AntApp } from 'antd';
 import MainPage from './pages/MainPage';
 import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import UserCenterPage from './pages/UserCenterPage';
+import LoginModal from './components/LoginModal';
 import MembershipUpgradeModal from './components/MembershipUpgradeModal';
 import { useThemeStore } from './stores/useThemeStore';
 import { useUserStore } from './stores/useUserStore';
@@ -186,6 +187,7 @@ function App() {
             }}
           />
           <MembershipUpgradeModal />
+          <LoginModal />
           <Routes>
             <Route path="/" element={<MainPage isElectron={isElectron} />} />
             <Route path="/account" element={<UserCenterPage />} />

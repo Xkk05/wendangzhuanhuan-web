@@ -355,6 +355,22 @@
   gap: 10px 0;
 }
 
+/* 语言下拉菜单样式 */
+.kq-language-dropdown-wrapper {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.kq-language-footer-select {
+  font-size: 14px;
+}
+
+.kq-language-footer-select .ant-select-selection-item {
+  color: #1f5fb8;
+  font-weight: 600;
+}
+
 .kq-language-link {
   border: none;
   background: transparent;

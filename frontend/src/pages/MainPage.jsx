@@ -22,7 +22,7 @@ import { DEFAULT_OG_IMAGE, getLocalizedPath, getSeoData } from '../utils/seo';
 import { LANGUAGE_OPTIONS } from '../constants/languages';
 import '../App.css';
 
-const DEFAULT_WEB_SECTION_NAME = 'html_converter';
+const DEFAULT_WEB_SECTION_NAME = '__home__';
 const HOME_SECTION_NAME = '__home__';
 const FAVORITES_STORAGE_KEY = 'toolFavorites';
 
@@ -469,16 +469,23 @@ function MainPage({ isElectron = false }) {
                     {selectedTool ? (
                       toolDetail
                     ) : isHomeSection ? (
-                      <section className="category-home-section">
-                        <div className="section-header">
-                          <div className="section-divider"></div>
-                          <h2 className="section-title">文档转换器</h2>
-                        </div>
-
-                        <div className="category-home-grid">
-                          {categoryCards}
-                        </div>
-                      </section>
+                      <>
+                        <Dashboard
+                          history={history}
+                          favorites={favorites}
+                          onToolClick={handleToolClick}
+                          onFavoriteToggle={handleFavoriteToggle}
+                        />
+                        <section className="category-home-section" style={{ marginTop: 32 }}>
+                          <div className="section-header">
+                            <div className="section-divider"></div>
+                            <h2 className="section-title">{t('home.all_categories')}</h2>
+                          </div>
+                          <div className="category-home-grid">
+                            {categoryCards}
+                          </div>
+                        </section>
+                      </>
                     ) : (
                       <>
                         <div className="section-header">

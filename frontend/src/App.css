@@ -4052,6 +4052,123 @@ body.web-mode .content-area {
   background: white;
 }
 
+/* ---- Login Modal ---- */
+.login-modal {
+  position: relative;
+  width: min(420px, calc(100vw - 32px));
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  animation: modalSlideUp 0.25s ease;
+}
+
+.login-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+}
+
+.login-modal-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.login-modal-body {
+  padding: 32px 28px 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.login-modal-icon {
+  color: #2563eb;
+  margin-bottom: 16px;
+  opacity: 0.85;
+}
+
+.login-modal-message {
+  font-size: 15px;
+  color: #475569;
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+
+.login-modal-btn {
+  width: 100%;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.login-modal-btn:hover {
+  opacity: 0.92;
+}
+
+.login-modal-cancel {
+  margin-top: 12px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 12px;
+}
+
+.login-modal-cancel:hover {
+  color: #64748b;
+}
+
+[data-theme='dark'] .login-modal {
+  background: #1e293b;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='dark'] .login-modal-header h2 {
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .login-modal-message {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .login-modal-cancel {
+  color: #64748b;
+}
+
+[data-theme='dark'] .login-modal-cancel:hover {
+  color: #94a3b8;
+}
+
+.login-modal-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: login-spin 0.7s linear infinite;
+  margin: 0 auto 16px;
+}
+
+[data-theme='dark'] .login-modal-spinner {
+  border-color: #334155;
+  border-top-color: #60a5fa;
+}
+
+@keyframes login-spin {
+  to { transform: rotate(360deg); }
+}
+
 .download-option-btn {
   display: flex;
   align-items: center;
@@ -5073,6 +5190,44 @@ a:hover {
   background-color: var(--primary-color);
   border-radius: 3px;
   transition: width 0.3s ease;
+}
+
+.progress-estimate {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.progress-bg-hint {
+  color: #00a3ff;
+  font-weight: 500;
+}
+
+.progress-stage {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+}
+
+/* 文件列表复选框 */
+.file-item-checkbox {
+  display: flex;
+  align-items: center;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.file-checkbox-input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--primary-color);
+}
+
+.file-checkbox-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* Danger Button Style */
