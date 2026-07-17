@@ -96,11 +96,21 @@ jobs:
           chmod -R u+rwX,g+rwX docker-data/backend
 
           $COMPOSE_CMD -f "$COMPOSE_FILE" config
-          if ! $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build; then
-            echo "Docker Compose startup failed. Recent logs:"
-            $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=200 || true
-            exit 1
-          fi
+          for attempt in 1 2 3; do
+            echo "Docker Compose startup attempt $attempt/3"
+            if $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build; then
+              break
+            fi
+
+            if [ "$attempt" = "3" ]; then
+              echo "Docker Compose startup failed. Recent logs:"
+              $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=200 || true
+              exit 1
+            fi
+
+            echo "Docker Compose startup failed, retrying in 20 seconds..."
+            sleep 20
+          done
           $COMPOSE_CMD -f "$COMPOSE_FILE" ps
 
       - name: Health check
