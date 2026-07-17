@@ -45,6 +45,7 @@ DEV_OAUTH_REDIRECT_URI = os.environ.get("DEV_OAUTH_REDIRECT_URI", "http://localh
 PROD_OAUTH_CLIENT_ID = os.environ.get("PROD_OAUTH_CLIENT_ID", "")
 PROD_OAUTH_CLIENT_SECRET = os.environ.get("PROD_OAUTH_CLIENT_SECRET", "")
 PROD_OAUTH_REDIRECT_URI = os.environ.get("PROD_OAUTH_REDIRECT_URI", "https://doc.kunqiongai.com/oauth/callback")
+PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "")
 TRIAL_STATE_CACHE = {}
 TRIAL_STATE_LOCK = threading.Lock()
 TRIAL_STATE_FILE = Path(__file__).resolve().parents[1] / "data" / "trial_state.json"
@@ -552,12 +553,38 @@ def _build_oauth_state() -> str:
     return uuid.uuid4().hex
 
 
-def _resolve_redirect_uri(redirect_uri: str) -> tuple[str, str, str]:
+def _get_request_origin(request: Optional[Request]) -> str:
+    if not request:
+        return ""
+    origin = (request.headers.get("origin") or "").strip().rstrip("/")
+    if origin:
+        return origin
+
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    forwarded_host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip()
+    host = forwarded_host or (request.headers.get("host") or "").strip()
+    if not host:
+        return ""
+    proto = forwarded_proto or str(request.url.scheme or "http")
+    return f"{proto}://{host}".rstrip("/")
+
+
+def _resolve_redirect_uri(redirect_uri: str, request: Optional[Request] = None) -> tuple[str, str, str]:
     normalized = (redirect_uri or "").strip()
     if normalized == DEV_OAUTH_REDIRECT_URI:
         return DEV_OAUTH_CLIENT_ID, DEV_OAUTH_CLIENT_SECRET, DEV_OAUTH_REDIRECT_URI
     if normalized == PROD_OAUTH_REDIRECT_URI:
         return PROD_OAUTH_CLIENT_ID, PROD_OAUTH_CLIENT_SECRET, PROD_OAUTH_REDIRECT_URI
+
+    dynamic_prod_redirects = []
+    if PUBLIC_SITE_URL:
+        dynamic_prod_redirects.append(f"{PUBLIC_SITE_URL.rstrip('/')}/oauth/callback")
+    request_origin = _get_request_origin(request)
+    if request_origin:
+        dynamic_prod_redirects.append(f"{request_origin}/oauth/callback")
+    if normalized in dynamic_prod_redirects:
+        return PROD_OAUTH_CLIENT_ID, PROD_OAUTH_CLIENT_SECRET, normalized
+
     raise HTTPException(status_code=400, detail=f"Unsupported redirect_uri: {redirect_uri}")
 
 
@@ -809,10 +836,10 @@ async def diagnostics():
 
 
 @router.post("/auth/login-url")
-async def get_auth_login_url(payload: LoginUrlPayload):
+async def get_auth_login_url(payload: LoginUrlPayload, request: Request):
     try:
         redirect_uri = payload.redirect_uri or payload.redirectUri or DEV_OAUTH_REDIRECT_URI
-        client_id, _, resolved_redirect_uri = _resolve_redirect_uri(redirect_uri)
+        client_id, _, resolved_redirect_uri = _resolve_redirect_uri(redirect_uri, request)
         state = (payload.state or "").strip() or _build_oauth_state()
         query = urllib.parse.urlencode({
             "response_type": "code",
@@ -841,7 +868,7 @@ async def get_auth_login_url(payload: LoginUrlPayload):
 async def exchange_oauth_code(payload: OAuthExchangePayload, request: Request):
     started_at = time.time()
     redirect_uri = payload.redirectUri or payload.redirect_uri or DEV_OAUTH_REDIRECT_URI
-    client_id, client_secret, resolved_redirect_uri = _resolve_redirect_uri(redirect_uri)
+    client_id, client_secret, resolved_redirect_uri = _resolve_redirect_uri(redirect_uri, request)
 
     try:
         token_started_at = time.time()

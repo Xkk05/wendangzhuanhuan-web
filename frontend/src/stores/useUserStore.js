@@ -276,7 +276,7 @@ export const useUserStore = create(
             localStorage.setItem('kq_api_web_token', apiWebToken);
             const hostname = window.location.hostname;
             const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-            const domain = isLocalhost ? '' : '.kunqiongai.com';
+            const domain = !isLocalhost && hostname.endsWith('.kunqiongai.com') ? '.kunqiongai.com' : '';
             const domainAttr = domain ? `domain=${domain};` : '';
             const secureAttr = window.location.protocol === 'https:' ? 'Secure;' : '';
             document.cookie = `api_web_token=${encodeURIComponent(apiWebToken)}; path=/; ${domainAttr} SameSite=None; ${secureAttr}`;
@@ -389,7 +389,7 @@ export const useUserStore = create(
             localStorage.setItem('kq_api_web_token', apiWebToken);
             const hostname = window.location.hostname;
             const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-            const domain = isLocalhost ? '' : '.kunqiongai.com';
+            const domain = !isLocalhost && hostname.endsWith('.kunqiongai.com') ? '.kunqiongai.com' : '';
             const domainAttr = domain ? `domain=${domain};` : '';
             const secureAttr = window.location.protocol === 'https:' ? 'Secure;' : '';
             document.cookie = `api_web_token=${encodeURIComponent(apiWebToken)}; path=/; ${domainAttr} SameSite=None; ${secureAttr}`;
@@ -470,7 +470,7 @@ export const useUserStore = create(
         // 同时清理可能存在的 cookie
         const hostname = window.location.hostname;
         const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-        const domain = isLocalhost ? '' : '.kunqiongai.com';
+        const domain = !isLocalhost && hostname.endsWith('.kunqiongai.com') ? '.kunqiongai.com' : '';
         const domainAttr = domain ? `domain=${domain};` : '';
         const secureAttr = window.location.protocol === 'https:' ? 'Secure;' : '';
         document.cookie = `api_web_token=; path=/; ${domainAttr} expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; ${secureAttr}`;

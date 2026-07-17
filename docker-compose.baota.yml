@@ -42,7 +42,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VITE_API_BASE_URL: ""
-        VITE_OAUTH_CALLBACK_URL: ${PROD_OAUTH_REDIRECT_URI:-https://doc.kunqiongai.com/oauth/callback}
+        VITE_OAUTH_CALLBACK_URL: ${VITE_OAUTH_CALLBACK_URL:-}
     container_name: converter-frontend
     depends_on:
       backend:

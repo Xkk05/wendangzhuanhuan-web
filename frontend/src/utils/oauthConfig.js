@@ -1,4 +1,4 @@
-const PROD_OAUTH_CALLBACK_URL = import.meta?.env?.VITE_OAUTH_CALLBACK_URL || 'https://doc.kunqiongai.com/oauth/callback';
+const PROD_OAUTH_CALLBACK_URL = import.meta?.env?.VITE_OAUTH_CALLBACK_URL || '';
 const DEV_OAUTH_CLIENT_ID = 'app_971b24a9955eae3b';
 const PROD_OAUTH_CLIENT_ID = 'app_d2765ab4687d35dd';
 const OAUTH_AUTHORIZE_URL = 'https://login.kunqiongai.com/authorize.html';
@@ -20,7 +20,7 @@ export function resolveOAuthRedirectUri() {
     return `${origin}/oauth/callback`;
   }
 
-  return PROD_OAUTH_CALLBACK_URL;
+  return PROD_OAUTH_CALLBACK_URL || `${origin}/oauth/callback`;
 }
 
 export function createOAuthState() {
