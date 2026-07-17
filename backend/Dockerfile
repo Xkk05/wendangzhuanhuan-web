@@ -9,7 +9,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     BACKEND_DOWNLOAD_DIR=/data/downloads \
     BACKEND_LOG_DIR=/data/logs \
     CONVERTER_UID=10001 \
-    CONVERTER_GID=10001
+    CONVERTER_GID=10001 \
+    HOME=/home/converter \
+    XDG_CACHE_HOME=/tmp/.cache \
+    XDG_CONFIG_HOME=/tmp/.config
 
 WORKDIR /app
 
@@ -34,15 +37,14 @@ RUN python -m pip install --upgrade pip -i ${PIP_INDEX_URL} && \
 COPY backend /app/backend
 COPY conversion_core /app/conversion_core
 
-RUN mkdir -p /data/uploads /data/downloads /data/logs
-
 EXPOSE 8002
 
-# Bug#13: Run as non-root user. Keep uid/gid stable so bind-mounted data
-# directories can be prepared by the deployment workflow before startup.
+# Bug#13: Run as a stable non-root user. The writable HOME/cache paths keep
+# browser and LibreOffice conversions from falling back to root-owned locations.
 RUN groupadd -g ${CONVERTER_GID} converter && \
-    useradd -u ${CONVERTER_UID} -g converter -d /app -s /usr/sbin/nologin -M converter && \
-    chown -R converter:converter /app /data
+    useradd -u ${CONVERTER_UID} -g converter -d ${HOME} -s /usr/sbin/nologin -M converter && \
+    mkdir -p /data/uploads /data/downloads /data/logs ${HOME} ${XDG_CACHE_HOME} ${XDG_CONFIG_HOME} && \
+    chown -R converter:converter /app /data ${HOME} ${XDG_CACHE_HOME} ${XDG_CONFIG_HOME}
 
 USER converter
 
