@@ -20,10 +20,12 @@ jobs:
       DEPLOY_DIR: /www/wwwroot/converter-app
       COMPOSE_FILE: docker-compose.baota.yml
       DEPLOY_HEALTH_URL: http://127.0.0.1:3017/
-      MEMBERSHIP_SUBSITE_NAME: https://doc.kunqiongai.com/
+      PUBLIC_SITE_URL: http://43.154.197.96:3017
+      MEMBERSHIP_SUBSITE_NAME: http://43.154.197.96:3017/
       MEMBERSHIP_PAY_PAGE: https://kunqiongai.com/web_member_pay.html
       OAUTH_TOKEN_URL: https://login.kunqiongai.com/api/oauth/token
-      PROD_OAUTH_REDIRECT_URI: https://doc.kunqiongai.com/oauth/callback
+      PROD_OAUTH_REDIRECT_URI: http://43.154.197.96:3017/oauth/callback
+      VITE_OAUTH_CALLBACK_URL: http://43.154.197.96:3017/oauth/callback
       PROD_OAUTH_CLIENT_ID: ${{ secrets.PROD_OAUTH_CLIENT_ID }}
       PROD_OAUTH_CLIENT_SECRET: ${{ secrets.PROD_OAUTH_CLIENT_SECRET }}
       DESKTOP_LOGIN_SECRET_KEY: ${{ secrets.DESKTOP_LOGIN_SECRET_KEY }}
@@ -72,12 +74,14 @@ jobs:
           umask 077
 
           cat > .env <<EOF
-          MEMBERSHIP_SUBSITE_NAME=${MEMBERSHIP_SUBSITE_NAME:-https://doc.kunqiongai.com/}
+          PUBLIC_SITE_URL=${PUBLIC_SITE_URL:-http://43.154.197.96:3017}
+          MEMBERSHIP_SUBSITE_NAME=${MEMBERSHIP_SUBSITE_NAME:-http://43.154.197.96:3017/}
           PROD_OAUTH_CLIENT_ID=${PROD_OAUTH_CLIENT_ID}
           PROD_OAUTH_CLIENT_SECRET=${PROD_OAUTH_CLIENT_SECRET}
           MEMBERSHIP_PAY_PAGE=${MEMBERSHIP_PAY_PAGE:-https://kunqiongai.com/web_member_pay.html}
           OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-https://login.kunqiongai.com/api/oauth/token}
-          PROD_OAUTH_REDIRECT_URI=${PROD_OAUTH_REDIRECT_URI:-https://doc.kunqiongai.com/oauth/callback}
+          PROD_OAUTH_REDIRECT_URI=${PROD_OAUTH_REDIRECT_URI:-http://43.154.197.96:3017/oauth/callback}
+          VITE_OAUTH_CALLBACK_URL=${VITE_OAUTH_CALLBACK_URL:-http://43.154.197.96:3017/oauth/callback}
           DESKTOP_LOGIN_SECRET_KEY=${DESKTOP_LOGIN_SECRET_KEY}
           USER_CENTER_DB_PASSWORD=${USER_CENTER_DB_PASSWORD}
           EOF
