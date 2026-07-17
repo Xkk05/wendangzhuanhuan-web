@@ -10,10 +10,10 @@ services:
       BACKEND_UPLOAD_DIR: /data/uploads
       BACKEND_DOWNLOAD_DIR: /data/downloads
       BACKEND_LOG_DIR: /data/logs
-      MEMBERSHIP_SUBSITE_NAME: ${MEMBERSHIP_SUBSITE_NAME:-https://doc.kunqiongai.com/}
+      MEMBERSHIP_SUBSITE_NAME: ${MEMBERSHIP_SUBSITE_NAME:-http://43.154.197.96:3017/}
       PROD_OAUTH_CLIENT_ID: ${PROD_OAUTH_CLIENT_ID}
       PROD_OAUTH_CLIENT_SECRET: ${PROD_OAUTH_CLIENT_SECRET}
-      PROD_OAUTH_REDIRECT_URI: ${PROD_OAUTH_REDIRECT_URI:-https://doc.kunqiongai.com/oauth/callback}
+      PROD_OAUTH_REDIRECT_URI: ${PROD_OAUTH_REDIRECT_URI:-http://43.154.197.96:3017/oauth/callback}
       MEMBERSHIP_PAY_PAGE: ${MEMBERSHIP_PAY_PAGE:-https://kunqiongai.com/web_member_pay.html}
       OAUTH_TOKEN_URL: ${OAUTH_TOKEN_URL:-https://login.kunqiongai.com/api/oauth/token}
       DESKTOP_LOGIN_SECRET_KEY: ${DESKTOP_LOGIN_SECRET_KEY}
