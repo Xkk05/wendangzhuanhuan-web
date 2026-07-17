@@ -6,7 +6,9 @@ RUN npm config set registry ${NPM_CONFIG_REGISTRY}
 
 COPY frontend/package.json frontend/package-lock.json ./
 ARG VITE_API_BASE_URL=
+ARG VITE_OAUTH_CALLBACK_URL=
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_OAUTH_CALLBACK_URL=${VITE_OAUTH_CALLBACK_URL}
 
 RUN npm ci
 
