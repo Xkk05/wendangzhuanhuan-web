@@ -7,7 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     BACKEND_PORT=8002 \
     BACKEND_UPLOAD_DIR=/data/uploads \
     BACKEND_DOWNLOAD_DIR=/data/downloads \
-    BACKEND_LOG_DIR=/data/logs
+    BACKEND_LOG_DIR=/data/logs \
+    CONVERTER_UID=10001 \
+    CONVERTER_GID=10001
 
 WORKDIR /app
 
@@ -36,8 +38,10 @@ RUN mkdir -p /data/uploads /data/downloads /data/logs
 
 EXPOSE 8002
 
-# Bug#13: Run as non-root user
-RUN groupadd -r converter && useradd -r -g converter converter && \
+# Bug#13: Run as non-root user. Keep uid/gid stable so bind-mounted data
+# directories can be prepared by the deployment workflow before startup.
+RUN groupadd -g ${CONVERTER_GID} converter && \
+    useradd -u ${CONVERTER_UID} -g converter -d /app -s /usr/sbin/nologin -M converter && \
     chown -R converter:converter /app /data
 
 USER converter

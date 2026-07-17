@@ -85,8 +85,16 @@ jobs:
           set -eu
           cd "$DEPLOY_DIR"
 
+          mkdir -p docker-data/backend/uploads docker-data/backend/downloads docker-data/backend/logs
+          chown -R 10001:10001 docker-data/backend
+          chmod -R u+rwX,g+rwX docker-data/backend
+
           $COMPOSE_CMD -f "$COMPOSE_FILE" config
-          $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build --remove-orphans
+          if ! $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build --remove-orphans; then
+            echo "Docker Compose startup failed. Recent logs:"
+            $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=200 || true
+            exit 1
+          fi
           $COMPOSE_CMD -f "$COMPOSE_FILE" ps
 
       - name: Health check
