@@ -98,7 +98,8 @@ jobs:
           $COMPOSE_CMD -f "$COMPOSE_FILE" config
           for attempt in 1 2 3; do
             echo "Docker Compose startup attempt $attempt/3"
-            if $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build; then
+            $COMPOSE_CMD -f "$COMPOSE_FILE" build --no-cache frontend
+            if $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build --force-recreate; then
               break
             fi
 
