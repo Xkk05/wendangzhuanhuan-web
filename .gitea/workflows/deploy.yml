@@ -19,7 +19,7 @@ jobs:
     env:
       DEPLOY_DIR: /www/wwwroot/converter-app
       COMPOSE_FILE: docker-compose.baota.yml
-      DEPLOY_HEALTH_URL: http://127.0.0.1:3017/
+      DEPLOY_HEALTH_URL: http://43.154.197.96:3017/
       PUBLIC_SITE_URL: http://43.154.197.96:3017
       MEMBERSHIP_SUBSITE_NAME: http://43.154.197.96:3017/
       MEMBERSHIP_PAY_PAGE: https://kunqiongai.com/web_member_pay.html
