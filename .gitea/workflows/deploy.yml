@@ -96,7 +96,7 @@ jobs:
           chmod -R u+rwX,g+rwX docker-data/backend
 
           $COMPOSE_CMD -f "$COMPOSE_FILE" config
-          if ! $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build --remove-orphans; then
+          if ! $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build; then
             echo "Docker Compose startup failed. Recent logs:"
             $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=200 || true
             exit 1
