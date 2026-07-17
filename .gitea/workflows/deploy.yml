@@ -95,6 +95,18 @@ jobs:
           chown -R 10001:10001 docker-data/backend
           chmod -R u+rwX,g+rwX docker-data/backend
 
+          echo "Current listeners on port 3017:"
+          ss -lntp 2>/dev/null | grep ':3017' || true
+          echo "Docker containers publishing port 3017:"
+          docker ps --filter publish=3017 --format 'table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}' || true
+
+          OLD_3017_CONTAINERS="$(docker ps -q --filter publish=3017 || true)"
+          if [ -n "$OLD_3017_CONTAINERS" ]; then
+            echo "Stopping old containers that publish port 3017..."
+            docker stop $OLD_3017_CONTAINERS
+            docker rm $OLD_3017_CONTAINERS
+          fi
+
           $COMPOSE_CMD -f "$COMPOSE_FILE" config
           for attempt in 1 2 3; do
             echo "Docker Compose startup attempt $attempt/3"
