@@ -441,11 +441,7 @@ export const useUserStore = create(
       },
 
       requireFeatureAccess: ({ navigate, returnTo, filesCount = 1, disableWatermark = false, t }) => {
-        const state = get();
-        if (!state.isLoggedIn || !state.token || state.token === '__guest_bypass_token__') {
-          state.showLoginModal(returnTo || DEFAULT_RETURN_TO);
-          return false;
-        }
+        set({ isLoginModalVisible: false, isPolling: false });
         return true;
       },
 
