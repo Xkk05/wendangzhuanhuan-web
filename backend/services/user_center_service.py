@@ -45,6 +45,9 @@ DB_CONFIG = {
 }
 DB_CONNECTION_MAX_AGE_SECONDS = int(os.environ.get("USER_CENTER_DB_CONNECTION_MAX_AGE_SECONDS", "120"))
 USER_PROFILE_CACHE_TTL_SECONDS = int(os.environ.get("USER_PROFILE_CACHE_TTL_SECONDS", "30"))
+LOCAL_SESSION_FALLBACK_ENABLED = os.environ.get("LOCAL_SESSION_FALLBACK_ENABLED", "true").lower() not in {"0", "false", "no"}
+LOCAL_SESSION_STORE_PATH = os.environ.get("LOCAL_SESSION_STORE_PATH", "/data/local-sessions.json")
+DB_FALLBACK_ERROR_CODES = {1045, 1130, 2002, 2003, 2005, 2013}
 
 SCHEMA_STATEMENTS = [
     """
@@ -154,6 +157,7 @@ class UserCenterService:
         self._thread_local = threading.local()
         self._profile_cache = {}
         self._profile_cache_lock = threading.Lock()
+        self._local_session_lock = threading.RLock()
 
     @contextmanager
     def get_connection(self):
@@ -236,6 +240,249 @@ class UserCenterService:
             f" {payload}" if payload else "",
         )
 
+    def _should_use_local_session_fallback(self, exc: Exception) -> bool:
+        if not LOCAL_SESSION_FALLBACK_ENABLED:
+            return False
+        if isinstance(exc, pymysql.MySQLError):
+            code = exc.args[0] if exc.args else None
+            return code in DB_FALLBACK_ERROR_CODES
+        return False
+
+    def _empty_local_session_store(self) -> dict:
+        return {"version": 1, "sessions": {}}
+
+    def _load_local_session_store(self) -> dict:
+        if not LOCAL_SESSION_FALLBACK_ENABLED:
+            return self._empty_local_session_store()
+        if not os.path.exists(LOCAL_SESSION_STORE_PATH):
+            return self._empty_local_session_store()
+        try:
+            with open(LOCAL_SESSION_STORE_PATH, "r", encoding="utf-8") as file:
+                payload = json.load(file)
+            if not isinstance(payload, dict):
+                return self._empty_local_session_store()
+            sessions = payload.get("sessions")
+            if not isinstance(sessions, dict):
+                payload["sessions"] = {}
+            return payload
+        except Exception as exc:
+            logger.warning("[local_session_store] read_failed path=%s error=%s", LOCAL_SESSION_STORE_PATH, exc)
+            return self._empty_local_session_store()
+
+    def _save_local_session_store(self, payload: dict):
+        os.makedirs(os.path.dirname(LOCAL_SESSION_STORE_PATH) or ".", exist_ok=True)
+        tmp_path = f"{LOCAL_SESSION_STORE_PATH}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, separators=(",", ":"))
+        os.replace(tmp_path, LOCAL_SESSION_STORE_PATH)
+
+    def _parse_datetime(self, value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(str(value), fmt)
+            except ValueError:
+                continue
+        return None
+
+    def _build_lightweight_profile(
+        self,
+        *,
+        remote_user: dict,
+        profile_id: Optional[int],
+        session_id: str,
+        global_user_id: str,
+        app_user_id: str,
+        oauth_user_id: str,
+        local_token: str,
+        api_web_token: Optional[str],
+        upstream_access_token: str,
+        now: datetime,
+        trial_expire_at: datetime,
+        session_source: str = "mysql",
+    ) -> dict:
+        return {
+            "profile_id": profile_id,
+            "session_id": session_id,
+            "global_user_id": global_user_id,
+            "user_id": app_user_id,
+            "id": oauth_user_id,
+            "username": remote_user.get("username") or "",
+            "nickname": remote_user.get("nickname") or remote_user.get("username") or "",
+            "avatar": remote_user.get("avatar"),
+            "email": remote_user.get("email"),
+            "phone": remote_user.get("phone"),
+            "token": local_token,
+            "api_web_token": api_web_token or upstream_access_token,
+            "app_scope": APP_SCOPE,
+            "is_vip": False,
+            "vip_level": 0,
+            "vip_expire_time": None,
+            "is_permanent_vip": False,
+            "trial_active": True,
+            "trial_started_at": self._format_datetime(now),
+            "trial_expire_time": self._format_datetime(trial_expire_at),
+            "remaining_days": self._compute_remaining_days(trial_expire_at),
+            "access_state": "trial",
+            "daily_used_count": 0,
+            "daily_limit_count": FREE_DAILY_LIMIT,
+            "remaining_daily_count": FREE_DAILY_LIMIT,
+            "max_file_size": FREE_MAX_FILE_SIZE,
+            "allow_batch": False,
+            "allow_no_watermark": False,
+            "disable_watermark": False,
+            "session_source": session_source,
+        }
+
+    def _build_session_result(
+        self,
+        *,
+        local_token: str,
+        profile: dict,
+        api_web_token: Optional[str],
+        refresh_token: Optional[str],
+    ) -> dict:
+        return {
+            "access_token": local_token,
+            "token_type": "Bearer",
+            "expires_in": LOCAL_SESSION_EXPIRE_SECONDS,
+            "user": self._build_user_info(profile),
+            "user_profile": profile,
+            "api_web_token": api_web_token or profile.get("api_web_token"),
+            "refresh_token": refresh_token,
+        }
+
+    def _create_local_fallback_session(
+        self,
+        *,
+        remote_user: dict,
+        upstream_access_token: str,
+        request_meta: Optional[dict] = None,
+        api_web_token: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+    ) -> dict:
+        request_meta = request_meta or {}
+        oauth_user_id = str(remote_user.get("id") or remote_user.get("user_id") or "")
+        if not oauth_user_id:
+            raise UserCenterError("Upstream login succeeded but user info is missing", 502, "upstream_user_missing")
+
+        global_user_id = f"kq_{oauth_user_id}"
+        app_user_id = f"{APP_SCOPE}_{hashlib.md5(global_user_id.encode('utf-8')).hexdigest()[:24]}"
+        now = datetime.utcnow()
+        expired_at = now + timedelta(seconds=LOCAL_SESSION_EXPIRE_SECONDS)
+        session_id = urllib.parse.quote_plus(f"{APP_SCOPE}:{now.timestamp()}:{oauth_user_id}")
+        local_token = f"{session_id}:{oauth_user_id}"
+        trial_expire_at = now + timedelta(days=TRIAL_DAYS)
+        profile = self._build_lightweight_profile(
+            remote_user=remote_user,
+            profile_id=None,
+            session_id=session_id,
+            global_user_id=global_user_id,
+            app_user_id=app_user_id,
+            oauth_user_id=oauth_user_id,
+            local_token=local_token,
+            api_web_token=api_web_token,
+            upstream_access_token=upstream_access_token,
+            now=now,
+            trial_expire_at=trial_expire_at,
+            session_source="local_file",
+        )
+
+        with self._local_session_lock:
+            store = self._load_local_session_store()
+            sessions = store.setdefault("sessions", {})
+            for record in sessions.values():
+                if (record.get("user_profile") or {}).get("user_id") == app_user_id:
+                    record["status"] = "LOGOUT"
+            sessions[local_token] = {
+                "status": "ACTIVE",
+                "expired_at": self._format_datetime(expired_at),
+                "user_profile": profile,
+                "api_web_token": api_web_token or upstream_access_token,
+                "upstream_access_token": upstream_access_token,
+                "refresh_token": refresh_token or "",
+                "login_ip": request_meta.get("client_ip"),
+                "user_agent": request_meta.get("user_agent"),
+                "created_at": self._format_datetime(now),
+            }
+            self._save_local_session_store(store)
+
+        self._set_cached_profile(local_token, profile)
+        logger.warning(
+            "[local_session_store] created token_tail=%s app_user_id=%s path=%s",
+            str(local_token)[-8:],
+            app_user_id,
+            LOCAL_SESSION_STORE_PATH,
+        )
+        return self._build_session_result(
+            local_token=local_token,
+            profile=profile,
+            api_web_token=api_web_token or upstream_access_token,
+            refresh_token=refresh_token,
+        )
+
+    def _get_local_session_record(self, token: str, *, include_expired: bool = False) -> Optional[dict]:
+        if not LOCAL_SESSION_FALLBACK_ENABLED or not token:
+            return None
+        changed = False
+        with self._local_session_lock:
+            store = self._load_local_session_store()
+            sessions = store.setdefault("sessions", {})
+            record = sessions.get(token)
+            if not record or record.get("status") != "ACTIVE":
+                return None
+            expired_at = self._parse_datetime(record.get("expired_at"))
+            if expired_at and expired_at < datetime.utcnow() and not include_expired:
+                record["status"] = "EXPIRED"
+                changed = True
+                result = None
+            else:
+                result = dict(record)
+                result["user_profile"] = dict(record.get("user_profile") or {})
+            if changed:
+                self._save_local_session_store(store)
+            return result
+
+    def _get_local_session_profile(self, token: str, allow_missing: bool = False) -> Optional[dict]:
+        record = self._get_local_session_record(token)
+        if not record:
+            if allow_missing:
+                return None
+            raise UserCenterError("Login session expired, please log in again", 401, "login_expired")
+        profile = dict(record.get("user_profile") or {})
+        profile["api_web_token"] = record.get("api_web_token") or record.get("upstream_access_token") or profile.get("api_web_token")
+        profile["session_source"] = "local_file"
+        self._set_cached_profile(token, profile)
+        return profile
+
+    def _update_local_session_record(self, token: str, **updates):
+        with self._local_session_lock:
+            store = self._load_local_session_store()
+            record = store.setdefault("sessions", {}).get(token)
+            if not record:
+                return
+            profile_updates = updates.pop("user_profile", None)
+            record.update(updates)
+            if profile_updates:
+                profile = record.setdefault("user_profile", {})
+                profile.update(profile_updates)
+            self._save_local_session_store(store)
+        self.invalidate_profile_cache(token)
+
+    def _logout_local_session(self, token: str) -> bool:
+        with self._local_session_lock:
+            store = self._load_local_session_store()
+            record = store.setdefault("sessions", {}).get(token)
+            if not record:
+                return False
+            record["status"] = "LOGOUT"
+            self._save_local_session_store(store)
+        self.invalidate_profile_cache(token)
+        return True
+
     def ensure_schema(self):
         if self._schema_ready:
             return
@@ -273,7 +520,6 @@ class UserCenterService:
         refresh_token: Optional[str] = None,
     ) -> dict:
         op_started_at = time.time()
-        self.ensure_schema()
         self.invalidate_profile_cache()
         request_meta = request_meta or {}
 
@@ -288,6 +534,25 @@ class UserCenterService:
         session_id = urllib.parse.quote_plus(f"{APP_SCOPE}:{now.timestamp()}:{oauth_user_id}")
         local_token = f"{session_id}:{oauth_user_id}"
         trial_expire_at = now + timedelta(days=TRIAL_DAYS)
+
+        try:
+            self.ensure_schema()
+        except Exception as exc:
+            if self._should_use_local_session_fallback(exc):
+                logger.warning(
+                    "[local_session_store] fallback_on_schema_error error=%s host=%s port=%s",
+                    exc,
+                    DB_CONFIG.get("host"),
+                    DB_CONFIG.get("port"),
+                )
+                return self._create_local_fallback_session(
+                    remote_user=remote_user,
+                    upstream_access_token=upstream_access_token,
+                    request_meta=request_meta,
+                    api_web_token=api_web_token,
+                    refresh_token=refresh_token,
+                )
+            raise
 
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
@@ -459,7 +724,17 @@ class UserCenterService:
             self._log_db_step("get_user_profile_cache_hit", op_started_at, token_tail=str(token)[-8:])
             return cached_profile
 
-        self.ensure_schema()
+        local_profile = self._get_local_session_profile(token, allow_missing=True)
+        if local_profile is not None:
+            self._log_db_step("get_user_profile_local_store_hit", op_started_at, token_tail=str(token)[-8:])
+            return local_profile
+
+        try:
+            self.ensure_schema()
+        except Exception as exc:
+            if self._should_use_local_session_fallback(exc):
+                return self._get_local_session_profile(token, allow_missing=allow_missing)
+            raise
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
                 query_started_at = time.time()
@@ -507,6 +782,9 @@ class UserCenterService:
                 row = cursor.fetchone()
                 self._log_db_step("get_user_profile_query", query_started_at, token_tail=str(token)[-8:])
                 if not row:
+                    local_profile = self._get_local_session_profile(token, allow_missing=True)
+                    if local_profile is not None:
+                        return local_profile
                     if allow_missing:
                         return None
                     raise UserCenterError("登录状态已失效，请重新登录", 401, "login_expired")
@@ -547,7 +825,21 @@ class UserCenterService:
         2. 如果 api_web_token 为空，回退到 upstream_access_token
         3. 如果两者都为空，尝试用 refresh_token 刷新会话
         """
-        self.ensure_schema()
+        local_record = self._get_local_session_record(token)
+        if local_record:
+            local_api_token = (local_record.get("api_web_token") or "").strip()
+            if local_api_token:
+                return local_api_token
+            local_upstream_token = (local_record.get("upstream_access_token") or "").strip()
+            if local_upstream_token:
+                return local_upstream_token
+
+        try:
+            self.ensure_schema()
+        except Exception as exc:
+            if self._should_use_local_session_fallback(exc):
+                return ""
+            raise
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -589,19 +881,33 @@ class UserCenterService:
         使用 refresh_token 刷新上游 OAuth 会话，并更新本地 session 记录。
         参考 zhuanghuanqi-master 的 refreshUpstreamSession 实现。
         """
-        self.ensure_schema()
-        with self.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT id, refresh_token, expired_at
-                    FROM app_user_session
-                    WHERE login_token = %s AND status = 'ACTIVE'
-                    LIMIT 1
-                    """,
-                    (local_token,),
-                )
-                row = cursor.fetchone()
+        local_record = self._get_local_session_record(local_token)
+        if local_record:
+            row = {
+                "id": None,
+                "refresh_token": local_record.get("refresh_token"),
+                "expired_at": local_record.get("expired_at"),
+                "session_source": "local_file",
+            }
+        else:
+            try:
+                self.ensure_schema()
+            except Exception as exc:
+                if self._should_use_local_session_fallback(exc):
+                    return None
+                raise
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id, refresh_token, expired_at
+                        FROM app_user_session
+                        WHERE login_token = %s AND status = 'ACTIVE'
+                        LIMIT 1
+                        """,
+                        (local_token,),
+                    )
+                    row = cursor.fetchone()
 
         if not row:
             print(f"[DEBUG] No active session found for token={local_token}")
@@ -629,28 +935,38 @@ class UserCenterService:
                 next_api_web_token = (refreshed.get("api_web_token") or "").strip() or next_access_token
 
                 new_expired_at = datetime.utcnow() + timedelta(seconds=LOCAL_SESSION_EXPIRE_SECONDS)
-                with self.get_connection() as conn:
-                    with conn.cursor() as cursor:
-                        cursor.execute(
-                            """
-                            UPDATE app_user_session
-                            SET upstream_access_token = %s,
-                                refresh_token = %s,
-                                api_web_token = %s,
-                                expired_at = %s,
-                                status = 'ACTIVE',
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE id = %s
-                            """,
-                            (
-                                next_access_token,
-                                next_refresh_token,
-                                next_api_web_token,
-                                new_expired_at,
-                                row["id"],
-                            ),
-                        )
-                    conn.commit()
+                if row.get("session_source") == "local_file":
+                    self._update_local_session_record(
+                        local_token,
+                        upstream_access_token=next_access_token,
+                        refresh_token=next_refresh_token,
+                        api_web_token=next_api_web_token,
+                        expired_at=self._format_datetime(new_expired_at),
+                        user_profile={"api_web_token": next_api_web_token},
+                    )
+                else:
+                    with self.get_connection() as conn:
+                        with conn.cursor() as cursor:
+                            cursor.execute(
+                                """
+                                UPDATE app_user_session
+                                SET upstream_access_token = %s,
+                                    refresh_token = %s,
+                                    api_web_token = %s,
+                                    expired_at = %s,
+                                    status = 'ACTIVE',
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE id = %s
+                                """,
+                                (
+                                    next_access_token,
+                                    next_refresh_token,
+                                    next_api_web_token,
+                                    new_expired_at,
+                                    row["id"],
+                                ),
+                            )
+                        conn.commit()
 
                 print(f"[DEBUG] Upstream token refresh succeeded for client_id={client_id}")
                 return {
@@ -707,7 +1023,16 @@ class UserCenterService:
             return None
 
     def get_api_web_token(self, token: str) -> Optional[str]:
-        self.ensure_schema()
+        local_record = self._get_local_session_record(token)
+        if local_record:
+            return local_record.get("api_web_token") or local_record.get("upstream_access_token")
+
+        try:
+            self.ensure_schema()
+        except Exception as exc:
+            if self._should_use_local_session_fallback(exc):
+                return None
+            raise
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -723,7 +1048,16 @@ class UserCenterService:
         return row.get("api_web_token") if row else None
 
     def get_upstream_access_token(self, token: str) -> Optional[str]:
-        self.ensure_schema()
+        local_record = self._get_local_session_record(token)
+        if local_record:
+            return local_record.get("upstream_access_token") or local_record.get("api_web_token")
+
+        try:
+            self.ensure_schema()
+        except Exception as exc:
+            if self._should_use_local_session_fallback(exc):
+                return None
+            raise
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -749,6 +1083,22 @@ class UserCenterService:
         op_started_at = time.time()
         profile = self.get_user_profile(token, allow_missing=True)
         if not profile:
+            return
+
+        if profile.get("session_source") == "local_file":
+            self._update_local_session_record(
+                token,
+                user_profile={
+                    "is_vip": bool(is_vip),
+                    "vip_level": vip_level if is_vip else 0,
+                    "vip_expire_time": vip_expire_time,
+                    "allow_batch": bool(is_vip),
+                    "allow_no_watermark": bool(is_vip),
+                    "disable_watermark": bool(is_vip),
+                    "access_state": "member_active" if is_vip else profile.get("access_state", "trial"),
+                },
+            )
+            self._log_db_step("update_membership_snapshot_local", op_started_at, token_tail=str(token)[-8:], is_vip=is_vip)
             return
 
         expire_dt = None
@@ -789,6 +1139,8 @@ class UserCenterService:
 
     def get_recent_records(self, token: str, limit: int = 10) -> list[dict]:
         profile = self.get_user_profile(token)
+        if profile.get("session_source") == "local_file":
+            return []
         self.ensure_schema()
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
@@ -825,7 +1177,13 @@ class UserCenterService:
     def logout(self, token: str):
         if not token:
             return
-        self.ensure_schema()
+        local_logged_out = self._logout_local_session(token)
+        try:
+            self.ensure_schema()
+        except Exception as exc:
+            if self._should_use_local_session_fallback(exc) and local_logged_out:
+                return
+            raise
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -877,6 +1235,8 @@ class UserCenterService:
             profile = self.get_user_profile(token, allow_missing=True)
             if not profile:
                 return
+            if profile.get("session_source") == "local_file":
+                return
 
             self.ensure_schema()
             completed_at = datetime.utcnow() if status in {"completed", "failed"} else None
@@ -923,25 +1283,39 @@ class UserCenterService:
         active_token = ""
 
         if token:
-            self.ensure_schema()
-            with self.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        SELECT
-                            s.api_web_token,
-                            s.upstream_access_token,
-                            p.app_user_id,
-                            i.oauth_user_id
-                        FROM app_user_session s
-                        INNER JOIN app_user_profile p ON p.app_user_id = s.app_user_id
-                        INNER JOIN global_user_identity i ON i.global_user_id = s.global_user_id
-                        WHERE s.login_token = %s AND s.status = 'ACTIVE' AND p.app_scope = %s
-                        LIMIT 1
-                        """,
-                        (token, APP_SCOPE),
+            local_record = self._get_local_session_record(token)
+            if local_record:
+                local_profile = local_record.get("user_profile") or {}
+                profile = {
+                    "id": local_profile.get("id") or "",
+                    "user_id": local_profile.get("user_id") or "",
+                }
+                if include_token:
+                    active_token = (
+                        (local_record.get("api_web_token") or "").strip()
+                        or (local_record.get("upstream_access_token") or "").strip()
                     )
-                    row = cursor.fetchone()
+                row = None
+            else:
+                self.ensure_schema()
+                with self.get_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            SELECT
+                                s.api_web_token,
+                                s.upstream_access_token,
+                                p.app_user_id,
+                                i.oauth_user_id
+                            FROM app_user_session s
+                            INNER JOIN app_user_profile p ON p.app_user_id = s.app_user_id
+                            INNER JOIN global_user_identity i ON i.global_user_id = s.global_user_id
+                            WHERE s.login_token = %s AND s.status = 'ACTIVE' AND p.app_scope = %s
+                            LIMIT 1
+                            """,
+                            (token, APP_SCOPE),
+                        )
+                        row = cursor.fetchone()
 
             if row:
                 profile = {
