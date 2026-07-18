@@ -13,10 +13,13 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy with Docker Compose
+    name: Deploy to Tencent CVM
     runs-on: ubuntu-22.04
 
     env:
+      DEPLOY_HOST: 43.154.197.96
+      DEPLOY_USER: root
+      DEPLOY_PORT: 22
       DEPLOY_DIR: /www/wwwroot/converter-app
       COMPOSE_FILE: docker-compose.baota.yml
       DEPLOY_HEALTH_URL: http://43.154.197.96:3017/
@@ -32,110 +35,103 @@ jobs:
       USER_CENTER_DB_PASSWORD: ${{ secrets.USER_CENTER_DB_PASSWORD }}
 
     steps:
-      - name: Checkout repository to deploy directory
+      - name: Prepare SSH
+        run: |
+          set -eu
+          test -n "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}"
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Checkout repository on runner
         run: |
           set -eu
 
+          SRC_DIR="$RUNNER_TEMP/converter-app-src"
           REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
           REF_NAME="${{ github.ref_name }}"
           SHA="${{ github.sha }}"
 
-          mkdir -p "$DEPLOY_DIR"
-          cd "$DEPLOY_DIR"
+          rm -rf "$SRC_DIR"
+          mkdir -p "$SRC_DIR"
+          cd "$SRC_DIR"
 
-          if [ ! -d .git ]; then
-            git init
-          fi
-
-          git remote remove origin >/dev/null 2>&1 || true
+          git init
           git remote add origin "$REPO_URL"
           git fetch --depth=1 origin "$SHA" || git fetch --depth=1 origin "$REF_NAME"
           git checkout --force FETCH_HEAD
-          git clean -fdx -e docker-data/ -e .env
-
-      - name: Check deployment dependencies
-        run: |
-          set -eu
-
-          docker --version
-          if docker compose version >/dev/null 2>&1; then
-            echo "COMPOSE_CMD=docker compose" >> "$GITHUB_ENV"
-          elif command -v docker-compose >/dev/null 2>&1; then
-            echo "COMPOSE_CMD=docker-compose" >> "$GITHUB_ENV"
-          else
-            echo "Docker Compose is not installed on this runner."
-            exit 1
-          fi
-
-      - name: Write production environment
-        run: |
-          set -eu
-          cd "$DEPLOY_DIR"
-          umask 077
+          git clean -fdx
 
           cat > .env <<EOF
-          PUBLIC_SITE_URL=${PUBLIC_SITE_URL:-http://43.154.197.96:3017}
-          MEMBERSHIP_SUBSITE_NAME=${MEMBERSHIP_SUBSITE_NAME:-http://43.154.197.96:3017/}
+          PUBLIC_SITE_URL=${PUBLIC_SITE_URL}
+          MEMBERSHIP_SUBSITE_NAME=${MEMBERSHIP_SUBSITE_NAME}
           PROD_OAUTH_CLIENT_ID=${PROD_OAUTH_CLIENT_ID}
           PROD_OAUTH_CLIENT_SECRET=${PROD_OAUTH_CLIENT_SECRET}
-          MEMBERSHIP_PAY_PAGE=${MEMBERSHIP_PAY_PAGE:-https://kunqiongai.com/web_member_pay.html}
-          OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-https://login.kunqiongai.com/api/oauth/token}
-          PROD_OAUTH_REDIRECT_URI=${PROD_OAUTH_REDIRECT_URI:-http://43.154.197.96:3017/oauth/callback}
-          VITE_OAUTH_CALLBACK_URL=${VITE_OAUTH_CALLBACK_URL:-http://43.154.197.96:3017/oauth/callback}
+          MEMBERSHIP_PAY_PAGE=${MEMBERSHIP_PAY_PAGE}
+          OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL}
+          PROD_OAUTH_REDIRECT_URI=${PROD_OAUTH_REDIRECT_URI}
+          VITE_OAUTH_CALLBACK_URL=${VITE_OAUTH_CALLBACK_URL}
           DESKTOP_LOGIN_SECRET_KEY=${DESKTOP_LOGIN_SECRET_KEY}
           USER_CENTER_DB_PASSWORD=${USER_CENTER_DB_PASSWORD}
           EOF
 
-      - name: Build and restart services
+          tar --exclude='./.git' --exclude='./docker-data' -czf "$RUNNER_TEMP/converter-app.tar.gz" .
+
+      - name: Upload release to server
         run: |
           set -eu
+
+          scp -P "$DEPLOY_PORT" -i ~/.ssh/deploy_key "$RUNNER_TEMP/converter-app.tar.gz" \
+            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/converter-app.tar.gz"
+
+      - name: Restart services on server
+        run: |
+          set -eu
+
+          ssh -p "$DEPLOY_PORT" -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$COMPOSE_FILE' bash -s" <<'REMOTE'
+          set -eu
+
+          mkdir -p "$DEPLOY_DIR"
           cd "$DEPLOY_DIR"
 
+          find . -mindepth 1 -maxdepth 1 ! -name docker-data -exec rm -rf {} +
+          tar -xzf /tmp/converter-app.tar.gz -C "$DEPLOY_DIR"
+          rm -f /tmp/converter-app.tar.gz
+
           mkdir -p docker-data/backend/uploads docker-data/backend/downloads docker-data/backend/logs
-          chown -R 10001:10001 docker-data/backend
           chmod -R u+rwX,g+rwX docker-data/backend
 
-          echo "Current listeners on port 3017:"
-          ss -lntp 2>/dev/null | grep ':3017' || true
-          echo "Docker containers publishing port 3017:"
-          docker ps --filter publish=3017 --format 'table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}' || true
-
-          OLD_3017_CONTAINERS="$(docker ps -q --filter publish=3017 || true)"
-          if [ -n "$OLD_3017_CONTAINERS" ]; then
-            echo "Stopping old containers that publish port 3017..."
-            docker stop $OLD_3017_CONTAINERS
-            docker rm $OLD_3017_CONTAINERS
+          if docker compose version >/dev/null 2>&1; then
+            COMPOSE_CMD="docker compose"
+          elif command -v docker-compose >/dev/null 2>&1; then
+            COMPOSE_CMD="docker-compose"
+          else
+            echo "Docker Compose is not installed on target server."
+            exit 1
           fi
 
+          echo "Target server listeners on port 3017:"
+          ss -lntp 2>/dev/null | grep ':3017' || true
+          echo "Target server containers publishing port 3017:"
+          docker ps --filter publish=3017 --format 'table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}' || true
+
           $COMPOSE_CMD -f "$COMPOSE_FILE" config
-          for attempt in 1 2 3; do
-            echo "Docker Compose startup attempt $attempt/3"
-            $COMPOSE_CMD -f "$COMPOSE_FILE" build --no-cache frontend
-            if $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build --force-recreate; then
-              break
-            fi
-
-            if [ "$attempt" = "3" ]; then
-              echo "Docker Compose startup failed. Recent logs:"
-              $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=200 || true
-              exit 1
-            fi
-
-            echo "Docker Compose startup failed, retrying in 20 seconds..."
-            sleep 20
-          done
+          $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --no-build --force-recreate backend frontend
           $COMPOSE_CMD -f "$COMPOSE_FILE" ps
+          REMOTE
 
       - name: Health check
         run: |
           set -eu
-          cd "$DEPLOY_DIR"
 
-          HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:3017/}"
-          echo "Checking $HEALTH_URL"
-
+          echo "Checking $DEPLOY_HEALTH_URL"
           for i in $(seq 1 30); do
-            if curl -fsS "$HEALTH_URL" >/dev/null; then
+            if curl -fsS "$DEPLOY_HEALTH_URL" >/dev/null; then
               echo "Deployment is healthy."
               exit 0
             fi
@@ -143,11 +139,5 @@ jobs:
             sleep 5
           done
 
-          echo "Health check failed. Recent logs:"
-          $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=120
+          echo "Health check failed."
           exit 1
-
-      - name: Cleanup old Docker images
-        if: success()
-        run: |
-          docker image prune -f
