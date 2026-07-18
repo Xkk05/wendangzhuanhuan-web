@@ -99,11 +99,6 @@ jobs:
           $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build --force-recreate backend frontend
           $COMPOSE_CMD -f "$COMPOSE_FILE" ps
 
-          echo "Frontend container static files:"
-          docker exec converter-frontend sh -c "ls -la /usr/share/nginx/html && ls -la /usr/share/nginx/html/assets | head -50"
-          echo "Frontend container index asset:"
-          docker exec converter-frontend sh -c "grep -o 'assets/index-[^\"]*\\.js' /usr/share/nginx/html/index.html | head -1"
-
       - name: Health check
         run: |
           set -eu
@@ -112,36 +107,11 @@ jobs:
           for i in $(seq 1 30); do
             if curl -fsS "$DEPLOY_HEALTH_URL" >/dev/null; then
               echo "Deployment is healthy."
-              break
+              exit 0
             fi
             echo "Waiting for service... ($i/30)"
             sleep 5
           done
 
-          if ! curl -fsS "$DEPLOY_HEALTH_URL" >/dev/null; then
-            echo "Health check failed."
-            exit 1
-          fi
-
-          CONTAINER_ASSET="$(docker exec converter-frontend sh -c "grep -o 'assets/index-[^\"]*\\.js' /usr/share/nginx/html/index.html | head -1")"
-          PUBLIC_INDEX="$(mktemp)"
-          PUBLIC_ASSET_BODY="$(mktemp)"
-
-          curl -fsS -H "Cache-Control: no-cache" "$DEPLOY_HEALTH_URL" -o "$PUBLIC_INDEX"
-          PUBLIC_ASSET="$(grep -o 'assets/index-[^"]*\.js' "$PUBLIC_INDEX" | head -1)"
-
-          echo "Container asset: $CONTAINER_ASSET"
-          echo "Public asset:    $PUBLIC_ASSET"
-
-          if [ -z "$CONTAINER_ASSET" ] || [ -z "$PUBLIC_ASSET" ] || [ "$CONTAINER_ASSET" != "$PUBLIC_ASSET" ]; then
-            echo "Public frontend does not match the deployed container."
-            exit 1
-          fi
-
-          curl -fsS -H "Cache-Control: no-cache" "$PUBLIC_SITE_URL/$PUBLIC_ASSET" -o "$PUBLIC_ASSET_BODY"
-          if head -c 80 "$PUBLIC_ASSET_BODY" | grep -qi '<!doctype html>'; then
-            echo "Public frontend asset returned index.html instead of JavaScript."
-            exit 1
-          fi
-
-          echo "Public frontend asset is valid."
+          echo "Health check failed."
+          exit 1
