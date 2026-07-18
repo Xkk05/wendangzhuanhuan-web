@@ -191,6 +191,14 @@ export const useUserStore = create(
             set({ isLoginModalVisible: true });
             await window.electronAPI.openExternal(loginUrl);
           } else {
+            const hostname = window.location.hostname;
+            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+            if (!isLocalhost) {
+              try { localStorage.removeItem('kq_login_mode'); } catch { /* ignore */ }
+              window.location.assign(loginUrl);
+              return loginUrl;
+            }
+
             // Web: 弹窗模式 — 标记弹窗以便 OAuthCallbackPage 识别
             try {
               localStorage.setItem('kq_login_mode', 'popup');

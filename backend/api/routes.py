@@ -42,6 +42,11 @@ OAUTH_SCOPE = os.environ.get("OAUTH_SCOPE", "basic")
 DEV_OAUTH_CLIENT_ID = os.environ.get("DEV_OAUTH_CLIENT_ID", "")
 DEV_OAUTH_CLIENT_SECRET = os.environ.get("DEV_OAUTH_CLIENT_SECRET", "")
 DEV_OAUTH_REDIRECT_URI = os.environ.get("DEV_OAUTH_REDIRECT_URI", "http://localhost:5176/oauth/callback")
+DEV_OAUTH_REDIRECT_URIS = {
+    DEV_OAUTH_REDIRECT_URI,
+    "http://localhost:5176/oauth/callback",
+    "http://127.0.0.1:5176/oauth/callback",
+}
 PROD_OAUTH_CLIENT_ID = os.environ.get("PROD_OAUTH_CLIENT_ID", "")
 PROD_OAUTH_CLIENT_SECRET = os.environ.get("PROD_OAUTH_CLIENT_SECRET", "")
 PROD_OAUTH_REDIRECT_URI = os.environ.get("PROD_OAUTH_REDIRECT_URI", "https://doc.kunqiongai.com/oauth/callback")
@@ -571,8 +576,8 @@ def _get_request_origin(request: Optional[Request]) -> str:
 
 def _resolve_redirect_uri(redirect_uri: str, request: Optional[Request] = None) -> tuple[str, str, str]:
     normalized = (redirect_uri or "").strip()
-    if normalized == DEV_OAUTH_REDIRECT_URI:
-        return DEV_OAUTH_CLIENT_ID, DEV_OAUTH_CLIENT_SECRET, DEV_OAUTH_REDIRECT_URI
+    if normalized in DEV_OAUTH_REDIRECT_URIS:
+        return DEV_OAUTH_CLIENT_ID, DEV_OAUTH_CLIENT_SECRET, normalized
     if normalized == PROD_OAUTH_REDIRECT_URI:
         return PROD_OAUTH_CLIENT_ID, PROD_OAUTH_CLIENT_SECRET, PROD_OAUTH_REDIRECT_URI
 
@@ -860,7 +865,10 @@ async def get_auth_login_url(payload: LoginUrlPayload, request: Request):
         raise HTTPException(status_code=502, detail=f"Upstream auth service unavailable: {exc}") from exc
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
+        logger.exception("[auth_login_url] unexpected error redirect_uri=%s", payload.redirect_uri or payload.redirectUri)
         raise HTTPException(status_code=500, detail=f"Failed to build login URL: {exc}") from exc
 
 
@@ -888,6 +896,9 @@ async def exchange_oauth_code(payload: OAuthExchangePayload, request: Request):
         raise HTTPException(status_code=exc.code or 502, detail=detail or "OAuth token exchange failed") from exc
     except urllib.error.URLError as exc:
         raise HTTPException(status_code=502, detail=f"OAuth service unavailable: {exc}") from exc
+    except Exception as exc:
+        logger.exception("[oauth_exchange_step] step=oauth_token unexpected_error redirect_uri=%s", resolved_redirect_uri)
+        raise HTTPException(status_code=502, detail=f"OAuth token exchange failed: {exc}") from exc
 
     if token_payload.get("code") != 200:
         raise HTTPException(status_code=400, detail=token_payload.get("message") or "OAuth token exchange failed")
@@ -945,6 +956,13 @@ async def exchange_oauth_code(payload: OAuthExchangePayload, request: Request):
             status_code=exc.status_code,
             detail={"success": False, "code": exc.code, "message": exc.message, **exc.payload},
         ) from exc
+    except Exception as exc:
+        logger.exception(
+            "[oauth_exchange_step] step=create_local_session unexpected_error redirect_uri=%s user_id=%s",
+            resolved_redirect_uri,
+            user_info.get("id") or user_info.get("user_id") or "-",
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to create local login session: {exc}") from exc
 
     logger.info(
         "[oauth_exchange] elapsed_ms=%s redirect_uri=%s user_id=%s local_token_tail=%s api_web_token_tail=%s",

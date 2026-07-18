@@ -11,10 +11,17 @@ const resolveFallbackBaseUrl = () => {
 
   const origin = window?.location?.origin;
   if (origin && /^https?:/i.test(origin)) {
-    const { hostname } = window.location;
+    const { hostname, protocol } = window.location;
     const isLocalDevHost = hostname === 'localhost' || hostname === '127.0.0.1';
     if (isLocalDevHost) {
       return 'http://127.0.0.1:8002';
+    }
+    const isPrivateLanHost =
+      /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+      /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname);
+    if (isPrivateLanHost) {
+      return `${protocol}//${hostname}:8002`;
     }
     return origin;
   }
