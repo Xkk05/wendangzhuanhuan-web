@@ -17,9 +17,6 @@ jobs:
     runs-on: ubuntu-22.04
 
     env:
-      DEPLOY_HOST: 43.154.197.96
-      DEPLOY_USER: root
-      DEPLOY_PORT: 22
       DEPLOY_DIR: /www/wwwroot/converter-app
       COMPOSE_FILE: docker-compose.baota.yml
       DEPLOY_HEALTH_URL: http://43.154.197.96:3017/
@@ -35,18 +32,6 @@ jobs:
       USER_CENTER_DB_PASSWORD: ${{ secrets.USER_CENTER_DB_PASSWORD }}
 
     steps:
-      - name: Prepare SSH
-        run: |
-          set -eu
-          test -n "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}"
-
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-
       - name: Checkout repository on runner
         run: |
           set -eu
@@ -81,27 +66,17 @@ jobs:
 
           tar --exclude='./.git' --exclude='./docker-data' -czf "$RUNNER_TEMP/converter-app.tar.gz" .
 
-      - name: Upload release to server
+      - name: Deploy locally on runner host
         run: |
           set -eu
 
-          scp -P "$DEPLOY_PORT" -i ~/.ssh/deploy_key "$RUNNER_TEMP/converter-app.tar.gz" \
-            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/converter-app.tar.gz"
-
-      - name: Restart services on server
-        run: |
-          set -eu
-
-          ssh -p "$DEPLOY_PORT" -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$COMPOSE_FILE' bash -s" <<'REMOTE'
-          set -eu
+          echo "Deploying locally to $DEPLOY_DIR"
 
           mkdir -p "$DEPLOY_DIR"
           cd "$DEPLOY_DIR"
 
           find . -mindepth 1 -maxdepth 1 ! -name docker-data -exec rm -rf {} +
-          tar -xzf /tmp/converter-app.tar.gz -C "$DEPLOY_DIR"
-          rm -f /tmp/converter-app.tar.gz
+          tar -xzf "$RUNNER_TEMP/converter-app.tar.gz" -C "$DEPLOY_DIR"
 
           mkdir -p docker-data/backend/uploads docker-data/backend/downloads docker-data/backend/logs
           chmod -R u+rwX,g+rwX docker-data/backend
@@ -121,9 +96,8 @@ jobs:
           docker ps --filter publish=3017 --format 'table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}' || true
 
           $COMPOSE_CMD -f "$COMPOSE_FILE" config
-          $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --no-build --force-recreate backend frontend
+          $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build --force-recreate backend frontend
           $COMPOSE_CMD -f "$COMPOSE_FILE" ps
-          REMOTE
 
       - name: Health check
         run: |
