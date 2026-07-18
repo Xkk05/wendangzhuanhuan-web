@@ -17,15 +17,14 @@ services:
       MEMBERSHIP_PAY_PAGE: ${MEMBERSHIP_PAY_PAGE:-https://kunqiongai.com/web_member_pay.html}
       OAUTH_TOKEN_URL: ${OAUTH_TOKEN_URL:-https://login.kunqiongai.com/api/oauth/token}
       DESKTOP_LOGIN_SECRET_KEY: ${DESKTOP_LOGIN_SECRET_KEY}
-      USER_CENTER_DB_HOST: ${USER_CENTER_DB_HOST:-host.docker.internal}
+      USER_CENTER_DB_HOST: ${USER_CENTER_DB_HOST:-127.0.0.1}
       USER_CENTER_DB_PORT: ${USER_CENTER_DB_PORT:-3306}
       USER_CENTER_DB_USER: ${USER_CENTER_DB_USER:-root}
       USER_CENTER_DB_NAME: ${USER_CENTER_DB_NAME:-kqai_web_doc}
       USER_CENTER_DB_PASSWORD: ${USER_CENTER_DB_PASSWORD}
     volumes:
       - ./docker-data/backend:/data
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    network_mode: host
     restart: unless-stopped
     # Bug#14: Resource limits to prevent DoS / OOM affecting host
     mem_limit: 4g
@@ -55,6 +54,8 @@ services:
         condition: service_healthy
     ports:
       - "3017:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     networks:
       - converter-network
