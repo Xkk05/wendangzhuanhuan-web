@@ -333,11 +333,10 @@
 }
 
 .kq-language-panel-inner {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.98));
+  background: #ffffff;
   border: 1px solid #d9e5f2;
   border-top: none;
   border-radius: 0 0 24px 24px;
-  box-shadow: 0 28px 55px rgba(49, 93, 151, 0.1);
   padding: 26px 32px 28px;
 }
 
@@ -345,30 +344,20 @@
   margin-bottom: 18px;
   color: #44648e;
   font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
 }
 
 .kq-language-links {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px 0;
+  flex-direction: column;
+  gap: 8px;
 }
 
-/* 语言下拉菜单样式 */
-.kq-language-dropdown-wrapper {
+.kq-language-link-row {
   display: flex;
-  align-items: center;
-  padding: 4px 0;
-}
-
-.kq-language-footer-select {
-  font-size: 14px;
-}
-
-.kq-language-footer-select .ant-select-selection-item {
-  color: #1f5fb8;
-  font-weight: 600;
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: 6px;
 }
 
 .kq-language-link {
@@ -377,8 +366,9 @@
   padding: 0;
   color: #567193;
   font-size: 14px;
-  line-height: 1.8;
+  line-height: 1.55;
   cursor: pointer;
+  font-family: inherit;
 }
 
 .kq-language-link::after {
@@ -393,7 +383,19 @@
 
 .kq-language-link.active {
   color: #1f5fb8;
-  font-weight: 700;
+  font-weight: 600;
+}
+
+.kq-language-link:hover,
+.kq-language-link:focus-visible {
+  color: #174f9c;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.kq-language-link:focus-visible {
+  outline: 2px solid rgba(31, 95, 184, 0.28);
+  outline-offset: 3px;
 }
 
 .kq-footer {

@@ -1,14 +1,15 @@
 import { useTranslation } from 'react-i18next';
-import { Select } from 'antd';
-import { GlobalOutlined } from '@ant-design/icons';
 import './WebShell.css';
 
 const SITE_ORIGIN = 'https://www.kunqiongai.com';
+const FOOTER_LANGUAGE_ROWS = [
+  ['zh_CN', 'zh_TW', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'it', 'pt', 'pt_BR', 'ru', 'ar', 'vi', 'th'],
+  ['id', 'pl', 'nl', 'tr', 'uk', 'he', 'fa', 'hi', 'bn', 'ms', 'sw', 'ta', 'tl', 'ur'],
+];
 
 function WebFooter({ languages = [], currentLanguage = 'zh_CN', onLanguageChange }) {
   const { t } = useTranslation();
-
-  const currentLangLabel = languages.find(l => l.value === currentLanguage)?.label || currentLanguage;
+  const languageMap = new Map(languages.map((language) => [language.value, language]));
 
   const quickLinks = [
     { label: t('webFooter.quick_links.home', 'Home'), href: `${SITE_ORIGIN}/` },
@@ -39,22 +40,23 @@ function WebFooter({ languages = [], currentLanguage = 'zh_CN', onLanguageChange
     <div className="kq-web-footer-stack">
       <section className="kq-language-panel">
         <div className="kq-language-panel-inner">
-          <div className="kq-language-title">{t('webFooter.language_title', 'LANGUAGE')}</div>
-          <div className="kq-language-dropdown-wrapper">
-            <GlobalOutlined style={{ marginRight: 8, color: '#888' }} />
-            <Select
-              value={currentLanguage}
-              onChange={handleLanguageClick}
-              options={languages}
-              showSearch
-              filterOption={(input, option) =>
-                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-              variant="borderless"
-              popupMatchSelectWidth={false}
-              style={{ minWidth: 160 }}
-              className="kq-language-footer-select"
-            />
+          <div className="kq-language-title">{t('webFooter.language_title', 'Language')}</div>
+          <div className="kq-language-links" aria-label={t('webFooter.language_title', 'Language')}>
+            {FOOTER_LANGUAGE_ROWS.map((row) => (
+              <div className="kq-language-link-row" key={row.join('-')}>
+                {row.map((code) => languageMap.get(code)).filter(Boolean).map((language) => (
+                  <button
+                    type="button"
+                    key={language.value}
+                    className={`kq-language-link ${language.value === currentLanguage ? 'active' : ''}`}
+                    onClick={() => handleLanguageClick(language.value)}
+                    aria-pressed={language.value === currentLanguage}
+                  >
+                    {language.label}
+                  </button>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       </section>
