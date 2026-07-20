@@ -9,7 +9,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 import pymysql
@@ -280,13 +280,27 @@ class UserCenterService:
         if not value:
             return None
         if isinstance(value, datetime):
-            return value
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+            parsed = value
+        else:
+            raw_value = str(value).strip()
+            iso_value = raw_value[:-1] + "+00:00" if raw_value.endswith("Z") else raw_value
             try:
-                return datetime.strptime(str(value), fmt)
+                parsed = datetime.fromisoformat(iso_value)
             except ValueError:
-                continue
-        return None
+                parsed = None
+            if parsed is None:
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+                    try:
+                        parsed = datetime.strptime(raw_value, fmt)
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    return None
+
+        if parsed.tzinfo is not None:
+            return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
 
     def _build_lightweight_profile(
         self,
@@ -1101,12 +1115,7 @@ class UserCenterService:
             self._log_db_step("update_membership_snapshot_local", op_started_at, token_tail=str(token)[-8:], is_vip=is_vip)
             return
 
-        expire_dt = None
-        if vip_expire_time:
-            try:
-                expire_dt = datetime.strptime(vip_expire_time, "%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                expire_dt = None
+        expire_dt = self._parse_datetime(vip_expire_time)
 
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
@@ -1482,4 +1491,6 @@ class UserCenterService:
     def _format_datetime(self, value: Optional[datetime]) -> Optional[str]:
         if not value:
             return None
-        return value.strftime("%Y-%m-%d %H:%M:%S")
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")

@@ -522,7 +522,7 @@ def _merge_profile_with_membership(local_token: str, membership: Optional[dict] 
         profile["access_state"] = "member_active"
         if vip_expire_time:
             try:
-                expire_dt = datetime.strptime(vip_expire_time, "%Y-%m-%d %H:%M:%S")
+                expire_dt = datetime.fromisoformat(str(vip_expire_time).replace("Z", ""))
                 delta = expire_dt - datetime.utcnow()
                 profile["remaining_days"] = max(delta.days + (1 if delta.seconds > 0 else 0), 0)
             except ValueError:

@@ -689,7 +689,10 @@ function UserCenterPage() {
                         const fileName = record.fileName || t('userCenter.record_file_fallback');
                         const sourceFormat = record.sourceFormat || t('userCenter.record_format_fallback');
                         const targetFormat = record.targetFormat || t('userCenter.record_format_fallback');
-                        const displayTime = record.completedAt || record.createdAt || t('userCenter.record_time_fallback');
+                        const recordTime = record.completedAt || record.createdAt;
+                        const displayTime = recordTime
+                          ? formatDateTime(recordTime)
+                          : t('userCenter.record_time_fallback');
 
                         return (
                           <div className="user-center-record-row" key={record.id}>

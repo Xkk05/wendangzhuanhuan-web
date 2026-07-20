@@ -105,10 +105,11 @@ async def shutdown_event():
 
 if __name__ == "__main__":
     for route in app.routes:
+        route_path = getattr(route, "path", route.__class__.__name__)
         if hasattr(route, "methods"):
-            logger.debug(f"Route: {route.path} {route.methods}")
+            logger.debug(f"Route: {route_path} {route.methods}")
         else:
-            logger.debug(f"Route: {route.path} (Mount)")
+            logger.debug(f"Route: {route_path} (Mount)")
     is_frozen = getattr(sys, "frozen", False)
     port = int(os.environ.get("BACKEND_PORT", "8002"))
     logger.info(f"启动端口: {port}, 是否打包: {is_frozen}")

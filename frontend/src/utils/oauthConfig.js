@@ -1,19 +1,39 @@
 const PROD_OAUTH_CALLBACK_URL = import.meta?.env?.VITE_OAUTH_CALLBACK_URL || '';
+const DEV_OAUTH_CALLBACK_ORIGIN = 'http://localhost:5176';
 const DEV_OAUTH_CLIENT_ID = 'app_971b24a9955eae3b';
 const PROD_OAUTH_CLIENT_ID = 'app_d2765ab4687d35dd';
 const OAUTH_AUTHORIZE_URL = 'https://login.kunqiongai.com/authorize.html';
 const OAUTH_LOGIN_URL = 'https://login.kunqiongai.com/login.html';
 const OAUTH_SCOPE = 'basic';
 
+function isLoopbackHost(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+export function normalizeLocalOAuthOrigin() {
+  if (typeof window === 'undefined' || window.electronAPI) {
+    return false;
+  }
+
+  const { protocol, hostname, port } = window.location;
+  if (protocol !== 'http:' || hostname !== '127.0.0.1' || port !== '5176') {
+    return false;
+  }
+
+  const normalizedUrl = new URL(window.location.href);
+  normalizedUrl.hostname = 'localhost';
+  window.location.replace(normalizedUrl.toString());
+  return true;
+}
+
 export function resolveOAuthRedirectUri() {
   if (typeof window === 'undefined') {
-    return 'http://localhost:5176/oauth/callback';
+    return `${DEV_OAUTH_CALLBACK_ORIGIN}/oauth/callback`;
   }
 
   const { origin, hostname } = window.location;
-  const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
-  if (isLocalHost) {
-    return `${origin}/oauth/callback`;
+  if (isLoopbackHost(hostname)) {
+    return `${DEV_OAUTH_CALLBACK_ORIGIN}/oauth/callback`;
   }
 
   if (window.electronAPI) {
