@@ -14,6 +14,7 @@ from typing import Optional
 
 import pymysql
 from pymysql.cursors import DictCursor
+from backend.services.local_processing_record_store import LocalProcessingRecordStore
 from backend.utils.logger import logger
 
 
@@ -47,6 +48,8 @@ DB_CONNECTION_MAX_AGE_SECONDS = int(os.environ.get("USER_CENTER_DB_CONNECTION_MA
 USER_PROFILE_CACHE_TTL_SECONDS = int(os.environ.get("USER_PROFILE_CACHE_TTL_SECONDS", "30"))
 LOCAL_SESSION_FALLBACK_ENABLED = os.environ.get("LOCAL_SESSION_FALLBACK_ENABLED", "true").lower() not in {"0", "false", "no"}
 LOCAL_SESSION_STORE_PATH = os.environ.get("LOCAL_SESSION_STORE_PATH", "/data/local-sessions.json")
+LOCAL_PROCESSING_RECORD_STORE_PATH = os.environ.get("LOCAL_PROCESSING_RECORD_STORE_PATH", "/data/local-processing-records.json")
+LOCAL_PROCESSING_RECORDS_PER_USER = int(os.environ.get("LOCAL_PROCESSING_RECORDS_PER_USER", "200"))
 DB_FALLBACK_ERROR_CODES = {1045, 1130, 2002, 2003, 2005, 2013}
 
 SCHEMA_STATEMENTS = [
@@ -158,6 +161,10 @@ class UserCenterService:
         self._profile_cache = {}
         self._profile_cache_lock = threading.Lock()
         self._local_session_lock = threading.RLock()
+        self._local_processing_records = LocalProcessingRecordStore(
+            LOCAL_PROCESSING_RECORD_STORE_PATH,
+            max_records_per_user=LOCAL_PROCESSING_RECORDS_PER_USER,
+        )
 
     @contextmanager
     def get_connection(self):
@@ -1148,26 +1155,41 @@ class UserCenterService:
 
     def get_recent_records(self, token: str, limit: int = 10) -> list[dict]:
         profile = self.get_user_profile(token)
+        local_records = self._local_processing_records.get_recent(
+            app_user_id=profile["user_id"],
+            app_scope=APP_SCOPE,
+            limit=limit,
+        )
         if profile.get("session_source") == "local_file":
-            return []
-        self.ensure_schema()
-        with self.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT
-                        id, tool_name, file_name, file_size, source_format, target_format,
-                        status, created_at, completed_at, result_path
-                    FROM app_tool_processing_record
-                    WHERE app_user_id = %s AND app_scope = %s
-                    ORDER BY COALESCE(completed_at, created_at) DESC
-                    LIMIT %s
-                    """,
-                    (profile["user_id"], APP_SCOPE, max(1, min(limit, 20))),
+            return local_records
+        try:
+            self.ensure_schema()
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT
+                            id, tool_name, file_name, file_size, source_format, target_format,
+                            status, created_at, completed_at, result_path
+                        FROM app_tool_processing_record
+                        WHERE app_user_id = %s AND app_scope = %s
+                        ORDER BY COALESCE(completed_at, created_at) DESC
+                        LIMIT %s
+                        """,
+                        (profile["user_id"], APP_SCOPE, max(1, min(limit, 20))),
+                    )
+                    rows = cursor.fetchall()
+        except Exception as exc:
+            if self._should_use_local_session_fallback(exc):
+                logger.warning(
+                    "[processing_record] mysql_read_failed_using_local user_id=%s error=%s",
+                    profile.get("user_id"),
+                    exc,
                 )
-                rows = cursor.fetchall()
+                return local_records
+            raise
 
-        return [
+        database_records = [
             {
                 "id": str(row["id"]),
                 "toolName": row["tool_name"],
@@ -1182,6 +1204,12 @@ class UserCenterService:
             }
             for row in rows
         ]
+        combined_records = database_records + local_records
+        combined_records.sort(
+            key=lambda record: record.get("completedAt") or record.get("createdAt") or "",
+            reverse=True,
+        )
+        return combined_records[:max(1, min(limit, 20))]
 
     def logout(self, token: str):
         if not token:
@@ -1240,11 +1268,28 @@ class UserCenterService:
         result_path: Optional[str] = None,
         result_message: Optional[str] = None,
     ):
+        profile = None
+        record_payload = {
+            "tool_name": tool_name,
+            "file_name": file_name,
+            "file_size": file_size,
+            "source_format": source_format,
+            "target_format": target_format,
+            "status": status,
+            "result_path": result_path,
+            "result_message": result_message,
+        }
         try:
             profile = self.get_user_profile(token, allow_missing=True)
             if not profile:
                 return
             if profile.get("session_source") == "local_file":
+                self._local_processing_records.append(
+                    app_user_id=profile["user_id"],
+                    global_user_id=profile["global_user_id"],
+                    app_scope=APP_SCOPE,
+                    **record_payload,
+                )
                 return
 
             self.ensure_schema()
@@ -1284,8 +1329,29 @@ class UserCenterService:
                     )
                 conn.commit()
             self.invalidate_profile_cache(token)
-        except Exception:
-            pass  # DB 记录失败不影响转换结果
+        except Exception as exc:
+            if profile:
+                try:
+                    self._local_processing_records.append(
+                        app_user_id=profile["user_id"],
+                        global_user_id=profile["global_user_id"],
+                        app_scope=APP_SCOPE,
+                        **record_payload,
+                    )
+                except Exception as fallback_exc:
+                    logger.warning(
+                        "[processing_record] mysql_and_local_write_failed user_id=%s error=%s fallback_error=%s",
+                        profile.get("user_id"),
+                        exc,
+                        fallback_exc,
+                    )
+                    return
+            logger.warning(
+                "[processing_record] mysql_write_failed_saved_locally=%s user_id=%s error=%s",
+                bool(profile),
+                (profile or {}).get("user_id", "-"),
+                exc,
+            )
 
     def build_payment_url(self, token: str = "", return_url: str = "https://doc.kunqiongai.com/account?returnTo=%2F", include_token: bool = True) -> str:
         profile = None
