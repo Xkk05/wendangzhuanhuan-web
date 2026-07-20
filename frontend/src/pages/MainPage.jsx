@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { Select } from 'antd';
-import { GlobalOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
+import { DownloadOutlined, GlobalOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
 import { categories } from '../data';
 import Dashboard from '../components/Dashboard';
 import ToolHeader from '../components/ToolHeader';
@@ -438,6 +438,15 @@ function MainPage({ isElectron = false }) {
                         <p className="web-project-desc">{t('header.app_subtitle')}</p>
                       </div>
                       <div className="web-project-actions">
+                        <a
+                          className="web-download-btn"
+                          href="https://downsoft.kunqiongai.com/software-updates/installers/10031/%E6%96%87%E6%A1%A3%E8%BD%AC%E6%8D%A2%E5%99%A8-Setup-1.0.2.exe"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <DownloadOutlined />
+                          <span>PC 桌面端</span>
+                        </a>
                         <div className="web-language-select">
                           <GlobalOutlined className="web-language-icon" />
                           <Select

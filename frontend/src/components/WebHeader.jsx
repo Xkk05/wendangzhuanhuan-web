@@ -1,4 +1,4 @@
-import { DownloadOutlined, DownOutlined, MenuOutlined, SearchOutlined } from '@ant-design/icons';
+import { DownOutlined, MenuOutlined, SearchOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -214,19 +214,6 @@ function WebHeader() {
         </nav>
 
         <div className="web-header-right kq-header-right">
-          <a
-            className="kq-download-entry"
-            href="https://downsoft.kunqiongai.com/software-updates/installers/10031/%E6%96%87%E6%A1%A3%E8%BD%AC%E6%8D%A2%E5%99%A8-Setup-1.0.2.exe"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <span className="kq-download-label">下载客户端</span>
-            <span className="kq-download-btn">
-              <DownloadOutlined />
-              <span>PC 桌面端</span>
-            </span>
-          </a>
-
           <form className="web-search-box kq-search-box" onSubmit={submitSearch}>
             <button
               type="submit"
