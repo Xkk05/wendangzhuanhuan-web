@@ -1,4 +1,3 @@
-import json
 import os
 from .base import BaseConverter
 from .json_to_html import JsonToHtmlConverter
@@ -21,10 +20,6 @@ class JsonToImageConverter(BaseConverter):
         try:
             self.validate_input(input_path)
             self.update_progress(input_path, 10)
-            
-            # 读取JSON文件
-            with open(input_path, 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
             
             self.update_progress(input_path, 20)
             

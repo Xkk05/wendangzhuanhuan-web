@@ -4328,6 +4328,7 @@ body.web-mode .content-area {
 
 .file-action-btn-primary:hover:not(:disabled) {
   background: var(--primary-dark);
+  color: #ffffff;
   border-color: var(--primary-dark);
   box-shadow: 0 3px 6px rgba(37, 99, 235, 0.3);
 }
@@ -4744,6 +4745,7 @@ body.web-mode .content-area {
 
 [data-theme='dark'] .file-action-btn-primary:hover:not(:disabled) {
   background-color: var(--primary-dark);
+  color: #ffffff;
   border-color: var(--primary-dark);
 }
 

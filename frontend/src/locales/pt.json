@@ -26,6 +26,7 @@
     "no_results": "Nenhuma função encontrada"
   },
   "home": {
+    "desktop_app": "Aplicação para computador",
     "title": "ConvertTool",
     "subtitle": "Ferramenta de conversão de arquivos online simples, rápida e segura",
     "categories": {

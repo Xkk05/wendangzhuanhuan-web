@@ -1,6 +1,7 @@
 from .base import BaseConverter
 from typing import Dict, Any
-import html
+import xml.etree.ElementTree as ET
+from backend.utils.structured_text import build_text_html, extract_xml_texts
 
 class XmlToHtmlConverter(BaseConverter):
     """XML 到 HTML 转换器"""
@@ -10,36 +11,15 @@ class XmlToHtmlConverter(BaseConverter):
         self.supported_formats = ['html']
     
     def convert(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
-        """将 XML 转换为 HTML 视图"""
+        """将 XML 正文转换为可阅读的 HTML"""
         try:
             self.validate_input(input_path)
             
-            with open(input_path, 'r', encoding='utf-8') as f:
-                xml_content = f.read()
-            
-            # 转义 XML 内容以在 HTML 中显示
-            escaped_xml = html.escape(xml_content)
-            
-            html_content = [
-                '<!DOCTYPE html>',
-                '<html>',
-                '<head>',
-                '<meta charset="utf-8">',
-                '<title>XML View</title>',
-                '<style>',
-                'body { font-family: Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace; padding: 20px; background-color: #f5f5f5; }',
-                'pre { background-color: white; padding: 20px; border-radius: 5px; border: 1px solid #ddd; overflow: auto; color: #000; }',
-                '</style>',
-                '</head>',
-                '<body>',
-                '<h2>XML Content</h2>',
-                f'<pre>{escaped_xml}</pre>',
-                '</body>',
-                '</html>'
-            ]
+            root = ET.parse(input_path).getroot()
+            html_content = build_text_html('XML Content', extract_xml_texts(root))
             
             with open(output_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(html_content))
+                f.write(html_content)
             
             return {
                 'success': True,

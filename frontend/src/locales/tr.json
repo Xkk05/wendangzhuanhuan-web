@@ -26,6 +26,7 @@
     "no_results": "İlgili işlev bulunamadı"
   },
   "home": {
+    "desktop_app": "Masaüstü Uygulaması",
     "title": "ConvertTool",
     "subtitle": "Basit, hızlı ve güvenli çevrimiçi dosya dönüştürme aracı",
     "categories": {

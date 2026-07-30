@@ -43,7 +43,7 @@ function MainPage({ isElectron = false }) {
         ...section,
         tools: (section.tools || []).filter((tool) => {
           const toolName = tool.name || '';
-          return !/^PPT\s+To\s+/i.test(toolName) && !/\s+To\s+PPT$/i.test(toolName);
+          return !/^PPT\s+To\s+/i.test(toolName);
         }),
       }))
       .filter((section) => (section.tools || []).length > 0);
@@ -445,7 +445,7 @@ function MainPage({ isElectron = false }) {
                           rel="noreferrer"
                         >
                           <DownloadOutlined />
-                          <span>PC 桌面端</span>
+                          <span>{t('home.desktop_app')}</span>
                         </a>
                         <div className="web-language-select">
                           <GlobalOutlined className="web-language-icon" />

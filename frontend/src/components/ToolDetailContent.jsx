@@ -107,6 +107,8 @@ function ToolDetailContent({ toolName, onBack }) {
     speechSpeed: 1.0,
     speechPitch: 1.0,
     pageSize: 'A4',
+    excelOrientation: 'auto',
+    excelScaleMode: 'fit_width',
     docxPdfPageRange: '',
     pdfCustomRange: ''
   });
@@ -191,7 +193,9 @@ function ToolDetailContent({ toolName, onBack }) {
     ? ['SPEECH', 'PDF', 'JPG', 'PNG'].includes(target)
     : source === 'XML'
     ? ['PDF', 'JPG', 'CSV', 'YAML'].includes(target)
-    : ['PPT', 'Excel'].includes(source)
+    : source === 'Excel'
+    ? ['PDF', 'PNG', 'JPG', 'JPEG', 'Image'].includes(target)
+    : source === 'PPT'
     ? ['PNG', 'JPG', 'JPEG', 'Image'].includes(target)
     : true;
 
@@ -393,6 +397,12 @@ function ToolDetailContent({ toolName, onBack }) {
 
   const handleRemoveFile = (id) => {
     setFiles(prev => prev.filter(f => f.id !== id));
+    setSelectedFiles(prev => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     // Also remove from conversion results
     setConversionResults(prev => {
       const newResults = { ...prev };
@@ -403,6 +413,7 @@ function ToolDetailContent({ toolName, onBack }) {
 
   const handleClearAll = () => {
     setFiles([]);
+    setSelectedFiles(new Set());
     setConversionResults({});
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (folderInputRef.current) folderInputRef.current.value = '';
@@ -1038,6 +1049,7 @@ function ToolDetailContent({ toolName, onBack }) {
                 options.rate = Math.round(convertOptions.speechSpeed * 150);
                 options.volume = 1.0;
                 options.pitch = convertOptions.speechPitch;
+                options.language = i18n.language?.startsWith('zh') ? 'zh-CN' : i18n.language;
               }
             }
             
@@ -1098,6 +1110,11 @@ function ToolDetailContent({ toolName, onBack }) {
 
             // Excel specific options
             if (source === 'Excel') {
+              if (['PDF', 'PNG', 'JPG', 'JPEG', 'Image'].includes(target)) {
+                options.page_size = convertOptions.pageSize;
+                options.excel_orientation = convertOptions.excelOrientation;
+                options.excel_scale_mode = convertOptions.excelScaleMode;
+              }
               if (['PNG', 'JPG', 'JPEG', 'Image'].includes(target)) {
                 options.quality = convertOptions.quality;
                 options.backgroundColor = convertOptions.backgroundColor;
@@ -1895,6 +1912,53 @@ function ToolDetailContent({ toolName, onBack }) {
               </div>
             ) : ['PPT', 'Excel'].includes(source) ? (
               <div className="ppt-excel-specific-options" style={{ padding: '0 20px 20px' }}>
+                {source === 'Excel' && ['PDF', 'PNG', 'JPG', 'JPEG', 'Image'].includes(target) && (
+                  <>
+                    <div className="sub-option" style={{ marginTop: '20px' }}>
+                      <label className="custom-theme-label">{t('toolDetail.options.page_size')}</label>
+                      <div className="custom-select-wrapper" style={{ position: 'relative' }}>
+                        <select
+                          value={convertOptions.pageSize}
+                          onChange={(e) => setConvertOptions({ ...convertOptions, pageSize: e.target.value })}
+                          className="custom-theme-select"
+                        >
+                          <option value="A4">A4</option>
+                          <option value="A3">A3</option>
+                          <option value="Letter">Letter</option>
+                          <option value="Legal">Legal</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="sub-option" style={{ marginTop: '16px' }}>
+                      <label className="custom-theme-label">{t('toolDetail.options.orientation')}</label>
+                      <div className="custom-select-wrapper" style={{ position: 'relative' }}>
+                        <select
+                          value={convertOptions.excelOrientation}
+                          onChange={(e) => setConvertOptions({ ...convertOptions, excelOrientation: e.target.value })}
+                          className="custom-theme-select"
+                        >
+                          <option value="auto">{t('toolDetail.options.auto')}</option>
+                          <option value="portrait">{t('toolDetail.options.portrait')}</option>
+                          <option value="landscape">{t('toolDetail.options.landscape')}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="sub-option" style={{ marginTop: '16px' }}>
+                      <label className="custom-theme-label">{t('toolDetail.options.page_scaling')}</label>
+                      <div className="custom-select-wrapper" style={{ position: 'relative' }}>
+                        <select
+                          value={convertOptions.excelScaleMode}
+                          onChange={(e) => setConvertOptions({ ...convertOptions, excelScaleMode: e.target.value })}
+                          className="custom-theme-select"
+                        >
+                          <option value="fit_width">{t('toolDetail.options.fit_page_width')}</option>
+                          <option value="actual_size">{t('toolDetail.options.actual_size')}</option>
+                          <option value="auto">{t('toolDetail.options.auto')}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
                 {['JPG', 'PNG', 'JPEG', 'Image'].includes(target) && (
                   <>
                     <div className="sub-option" style={{ marginTop: '20px' }}>

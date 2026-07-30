@@ -26,6 +26,7 @@
     "no_results": "No se encontraron funciones relacionadas"
   },
   "home": {
+    "desktop_app": "Aplicación de escritorio",
     "title": "ConvertTool",
     "subtitle": "Herramienta de conversión de archivos en línea simple, rápida y segura",
     "categories": {

@@ -240,6 +240,8 @@ export const convertGeneral = async (file, targetFormat, options = {}) => {
     if (options.remove_empty_tags !== undefined) formData.append('remove_empty_tags', options.remove_empty_tags);
     if (options.page_size) formData.append('page_size', options.page_size);
     if (options.orientation) formData.append('orientation', options.orientation);
+    if (options.excel_orientation) formData.append('excel_orientation', options.excel_orientation);
+    if (options.excel_scale_mode) formData.append('excel_scale_mode', options.excel_scale_mode);
     
     // Image quality options
     if (options.quality !== undefined) formData.append('quality', options.quality);
@@ -263,6 +265,12 @@ export const convertGeneral = async (file, targetFormat, options = {}) => {
     // GIF animation options
     if (options.animation_delay !== undefined) formData.append('animation_delay', options.animation_delay);
     if (options.loop_animation !== undefined) formData.append('loop_animation', options.loop_animation);
+
+    // Speech options
+    if (options.rate !== undefined) formData.append('rate', options.rate);
+    if (options.volume !== undefined) formData.append('volume', options.volume);
+    if (options.pitch !== undefined) formData.append('pitch', options.pitch);
+    if (options.language) formData.append('language', options.language);
 
     const apiBaseUrl = await getApiBaseUrl();
     const ready = await ensureBackendReady(apiBaseUrl);
@@ -299,7 +307,7 @@ export const convertGeneral = async (file, targetFormat, options = {}) => {
       throw error;
     } finally {
       if (options.signal && externalAbortHandler) {
-        try { options.signal.removeEventListener('abort', externalAbortHandler); } catch {}
+        options.signal.removeEventListener('abort', externalAbortHandler);
       }
     }
   } catch (error) {

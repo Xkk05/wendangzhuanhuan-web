@@ -25,11 +25,18 @@ class ExcelToHtmlConverter(BaseConverter):
             wb = load_workbook(input_path, data_only=True, read_only=True)
             self.update_progress(input_path, 20)
             
+            scale_mode = str(options.get('excel_scale_mode') or 'fit_width').lower()
+            table_width = 'max-content' if scale_mode == 'actual_size' else '100%'
+
             html_content = []
             html_content.append('<!DOCTYPE html>')
             html_content.append('<html><head><meta charset="utf-8"><style>')
-            html_content.append('table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }')
+            html_content.append(
+                f'table {{ border-collapse: collapse; width: {table_width}; max-width: 100%; margin-bottom: 20px; }}'
+            )
             html_content.append('th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }')
+            if scale_mode != 'actual_size':
+                html_content.append('th, td { overflow-wrap: anywhere; }')
             html_content.append('th { background-color: #f2f2f2; }')
             html_content.append('.sheet-title { font-size: 1.5em; margin: 20px 0 10px; font-weight: bold; }')
             html_content.append('</style></head><body>')

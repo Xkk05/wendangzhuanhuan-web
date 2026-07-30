@@ -28,6 +28,7 @@
   "home": {
     "title": "ConvertTool",
     "subtitle": "简单、快速、安全的在线文件转换工具",
+    "desktop_app": "PC 桌面端",
     "all_categories": "全部分类",
     "categories": {
       "docx": "DOCX 转换",
@@ -150,6 +151,10 @@
       "remove_empty_tags": "移除空标签",
       "page_settings": "页面设置",
       "page_size": "页面大小",
+      "page_scaling": "页面缩放",
+      "fit_page_width": "适应一页宽度",
+      "actual_size": "实际大小",
+      "auto": "自动",
       "animation_settings": "动画设置",
       "animation_delay": "动画延迟 (ms)",
       "loop_animation": "循环播放",

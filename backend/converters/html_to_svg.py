@@ -1,10 +1,12 @@
 import os
 import logging
+import html
 from .base import BaseConverter
 from typing import Dict, Any
 from html2image import Html2Image
 from PIL import Image
 import base64
+from backend.utils.text_utils import read_text_file
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +87,7 @@ class HtmlToSvgConverter(BaseConverter):
             raise Exception("浏览器初始化失败，无法进行截图转换")
         
         # 读取 HTML 内容
-        with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
-            html_content = f.read()
+        html_content = read_text_file(input_path, options.get('encoding'))
         
         self.update_progress(input_path, 20)
         
@@ -176,6 +177,55 @@ class HtmlToSvgConverter(BaseConverter):
             'height': img_height,
             'method': 'screenshot_embedded'
         }
+
+    def _convert_to_text_svg(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
+        html_content = read_text_file(input_path, options.get('encoding'))
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+            text_content = soup.get_text('\n')
+        except Exception:
+            text_content = html_content
+
+        lines = []
+        for raw_line in text_content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            while len(line) > 42:
+                lines.append(line[:42])
+                line = line[42:]
+            lines.append(line)
+        if not lines:
+            lines = ['HTML conversion result']
+
+        width = int(options.get('width') or 1280)
+        line_height = 28
+        padding = 32
+        height = max(160, padding * 2 + len(lines) * line_height)
+        text_nodes = []
+        for index, line in enumerate(lines):
+            y = padding + (index + 1) * line_height
+            text_nodes.append(f'<text x="{padding}" y="{y}" font-size="18" fill="#111827">{html.escape(line)}</text>')
+
+        svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <g font-family="Arial, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+    {''.join(text_nodes)}
+  </g>
+</svg>'''
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(svg_content)
+
+        return {
+            'success': True,
+            'output_path': output_path,
+            'size': self.get_output_size(output_path),
+            'width': width,
+            'height': height,
+            'method': 'text_svg_fallback'
+        }
     
     def convert(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         """将 HTML 转换为 SVG"""
@@ -184,8 +234,7 @@ class HtmlToSvgConverter(BaseConverter):
             self.update_progress(input_path, 5)
             
             # 读取HTML内容
-            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
-                html_content = f.read()
+            html_content = read_text_file(input_path, options.get('encoding'))
             
             self.update_progress(input_path, 10)
             
@@ -206,8 +255,12 @@ class HtmlToSvgConverter(BaseConverter):
                     'method': 'svg_extracted'
                 }
             
-            # 策略2: 通过截图方式转换
-            return self._convert_via_screenshot(input_path, output_path, **options)
+            # 策略2: 通过截图方式转换，失败后降级为文本 SVG，保证链路不断。
+            try:
+                return self._convert_via_screenshot(input_path, output_path, **options)
+            except Exception as screenshot_error:
+                logger.warning(f"HTML screenshot to SVG failed, fallback to text SVG: {screenshot_error}")
+                return self._convert_to_text_svg(input_path, output_path, **options)
             
         except Exception as e:
             self.cleanup_on_error(output_path)

@@ -38,7 +38,7 @@ class ExcelToImageConverter(BaseConverter):
                 
             self.excel_to_pdf.progress_callback = excel_progress
             
-            pdf_result = self.excel_to_pdf.convert(input_path, temp_pdf)
+            pdf_result = self.excel_to_pdf.convert(input_path, temp_pdf, **options)
             
             if not pdf_result.get('success'):
                 raise Exception(f"Excel to PDF conversion failed: {pdf_result.get('error')}")

@@ -1,6 +1,8 @@
 import os
+import tempfile
 from .base import BaseConverter
 from typing import Dict, Any
+from backend.utils.text_utils import detect_tts_language, read_text_file
 
 
 class TxtToSpeechConverter(BaseConverter):
@@ -24,8 +26,7 @@ class TxtToSpeechConverter(BaseConverter):
             self.validate_input(input_path)
             self.update_progress(input_path, 5)
             
-            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
-                text = f.read()
+            text = read_text_file(input_path, options.get('encoding'))
             
             if not text.strip():
                 raise Exception("文本内容为空")
@@ -36,7 +37,8 @@ class TxtToSpeechConverter(BaseConverter):
             rate = options.get('rate', 150)  # 语速
             volume = options.get('volume', 1.0)  # 音量 0-1
             pitch = options.get('pitch', 1.0)  # 音调 0.5-2.0
-            language = options.get('language', 'en')  # 语言代码
+            language = options.get('language') or detect_tts_language(text, default='zh-CN')  # 语言代码
+            gtts_error = 'skipped'
             
             print(f"[TTS Options] rate={rate}, volume={volume}, pitch={pitch}, language={language}")
             
@@ -48,17 +50,18 @@ class TxtToSpeechConverter(BaseConverter):
                     result = self._convert_with_gtts(text, output_path, language, rate, pitch)
                     self.update_progress(input_path, 100)
                     return result
-                except Exception as e1:
-                    print(f"[gTTS failed] {e1}, trying pyttsx3...")
+                except Exception as exc:
+                    gtts_error = str(exc)
+                    print(f"[gTTS failed] {exc}, trying pyttsx3...")
                     self.update_progress(input_path, 30)
             
             # 策略2: 使用 pyttsx3 (降级方案,主要支持 WAV)
             try:
-                result = self._convert_with_pyttsx3(text, output_path, rate, volume, pitch)
+                result = self._convert_with_pyttsx3(text, output_path, rate, volume, pitch, language)
                 self.update_progress(input_path, 100)
                 return result
             except Exception as e2:
-                raise Exception(f"All TTS engines failed. gTTS: {str(e1) if target_format == 'mp3' else 'skipped'}, pyttsx3: {str(e2)}")
+                raise Exception(f"All TTS engines failed. gTTS: {gtts_error if target_format == 'mp3' else 'skipped'}, pyttsx3: {str(e2)}")
             
         except Exception as e:
             self.cleanup_on_error(output_path)
@@ -78,6 +81,11 @@ class TxtToSpeechConverter(BaseConverter):
             'zh': 'zh-CN',
             '中文': 'zh-CN',
             '中文 (普通话)': 'zh-CN',
+            'zh-CN': 'zh-CN',
+            'zh_CN': 'zh-CN',
+            'zh-cn': 'zh-CN',
+            'zh_Hans': 'zh-CN',
+            'zh-Hans': 'zh-CN',
             'es': 'es',
             '西班牙语': 'es',
             'fr': 'fr',
@@ -132,7 +140,7 @@ class TxtToSpeechConverter(BaseConverter):
             }
         }
     
-    def _convert_with_pyttsx3(self, text: str, output_path: str, rate: int = 150, volume: float = 1.0, pitch: float = 1.0) -> Dict[str, Any]:
+    def _convert_with_pyttsx3(self, text: str, output_path: str, rate: int = 150, volume: float = 1.0, pitch: float = 1.0, language: str = 'zh-CN') -> Dict[str, Any]:
         """使用 pyttsx3 转换（降级方案 - 主要支持 WAV）"""
         try:
             import pyttsx3
@@ -154,30 +162,37 @@ class TxtToSpeechConverter(BaseConverter):
                 print(f"[pyttsx3] Current voice: {current_voice}")
                 print(f"[pyttsx3] Available voices: {len(voices)}")
                 
-                # 如果有多个语音可选，可以根据pitch选择不同的语音
-                if len(voices) > 1 and pitch != 1.0:
-                    # 简单的音调映射：高音调选择女声，低音调选择男声
-                    if pitch > 1.2:
-                        # 寻找女声
-                        for voice in voices:
-                            if 'female' in voice.name.lower() or 'woman' in voice.name.lower():
-                                engine.setProperty('voice', voice.id)
-                                break
-                    elif pitch < 0.8:
-                        # 寻找男声
-                        for voice in voices:
-                            if 'male' in voice.name.lower() or 'man' in voice.name.lower():
-                                engine.setProperty('voice', voice.id)
-                                break
+                if str(language).lower().startswith('zh'):
+                    for voice in voices:
+                        haystack = f"{getattr(voice, 'id', '')} {getattr(voice, 'name', '')} {getattr(voice, 'languages', '')}".lower()
+                        if any(token in haystack for token in ['zh', 'chinese', 'mandarin', 'huihui', 'kangkang', 'yaoyao', 'hanhan']):
+                            engine.setProperty('voice', voice.id)
+                            break
         except Exception as voice_error:
             print(f"[pyttsx3] Voice adjustment failed: {voice_error}")
         
         print(f"[pyttsx3] Final settings - rate: {rate}, volume: {volume}, pitch: {pitch}")
         
+        target_ext = os.path.splitext(output_path)[1].lower()
+        save_path = output_path
+        temp_wav = None
+        if target_ext == '.mp3':
+            fd, temp_wav = tempfile.mkstemp(suffix='.wav')
+            os.close(fd)
+            os.remove(temp_wav)
+            save_path = temp_wav
+
         # 保存为音频文件
-        engine.save_to_file(text, output_path)
+        engine.save_to_file(text, save_path)
         engine.runAndWait()
-        
+
+        if temp_wav:
+            self._convert_wav_to_mp3(temp_wav, output_path)
+            try:
+                os.remove(temp_wav)
+            except Exception:
+                pass
+
         if not os.path.exists(output_path):
             raise Exception("Audio file generation failed")
         
@@ -186,12 +201,31 @@ class TxtToSpeechConverter(BaseConverter):
             'output_path': output_path,
             'size': self.get_output_size(output_path),
             'method': 'pyttsx3',
+            'language': language,
             'settings': {
                 'rate': rate,
                 'volume': volume,
                 'pitch': pitch
             }
         }
+
+    def _convert_wav_to_mp3(self, input_path: str, output_path: str):
+        try:
+            from pydub import AudioSegment
+            AudioSegment.from_wav(input_path).export(output_path, format='mp3')
+            return
+        except Exception:
+            pass
+
+        import subprocess
+        try:
+            subprocess.run(
+                ['ffmpeg', '-y', '-i', input_path, output_path],
+                check=True,
+                capture_output=True
+            )
+        except Exception as exc:
+            raise Exception(f"MP3 conversion failed: {exc}")
     def _adjust_audio_properties(self, input_path: str, output_path: str, rate: int, pitch: float):
         """调整音频的速度和音调"""
         try:

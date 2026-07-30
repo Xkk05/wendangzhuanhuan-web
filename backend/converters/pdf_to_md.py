@@ -62,15 +62,16 @@ class PdfToMdConverter(BaseConverter):
                 
                 try:
                     if use_native_mode:
-                        # 策略1: 使用 PyMuPDF 的 markdown 模式（更准确）
+                        # 策略1: 使用 PyMuPDF 的 markdown 模式；不同版本可能抛出
+                        # AssertionError/RuntimeError，因此任何异常都要降级到文本提取。
                         try:
                             text = page.get_text("markdown")
-                            if text.strip():
-                                md_content.append(text)
-                        except ValueError:
-                            # markdown 模式失败，降级到智能识别
+                        except Exception:
                             text = self._extract_with_smart_detection(page)
-                            md_content.append(text)
+
+                        if not text.strip():
+                            text = self._extract_with_smart_detection(page)
+                        md_content.append(text)
                     else:
                         # 策略2: 智能标题识别（原有方案）
                         text = self._extract_with_smart_detection(page)

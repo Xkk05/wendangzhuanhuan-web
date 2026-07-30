@@ -34,7 +34,40 @@ class ExcelToPdfConverter(BaseConverter):
         # 3. 检查环境变量 PATH
         return shutil.which("soffice")
 
-    def _convert_with_excel(self, input_path: str, output_path: str) -> Dict[str, Any]:
+    def _resolve_page_settings(self, options: Dict[str, Any], col_count: int) -> Dict[str, Any]:
+        """Return COM-ready page settings, preserving the existing automatic defaults."""
+        paper_sizes = {
+            'A4': 9,
+            'A3': 8,
+            'Letter': 1,
+            'Legal': 5,
+        }
+        requested_orientation = str(options.get('excel_orientation') or 'auto').lower()
+        scale_mode = str(options.get('excel_scale_mode') or 'auto').lower()
+
+        if col_count <= 6:
+            automatic = {'paper_size': 9, 'orientation': 1, 'scale_mode': 'fit_width'}
+        elif col_count <= 10:
+            automatic = {'paper_size': 9, 'orientation': 2, 'scale_mode': 'fit_width'}
+        elif col_count <= 15:
+            automatic = {'paper_size': 8, 'orientation': 2, 'scale_mode': 'fit_width'}
+        else:
+            automatic = {'paper_size': 8, 'orientation': 2, 'scale_mode': 'scaled_85'}
+
+        if requested_orientation == 'portrait':
+            automatic['orientation'] = 1
+        elif requested_orientation == 'landscape':
+            automatic['orientation'] = 2
+
+        page_size = str(options.get('page_size') or 'auto')
+        if page_size in paper_sizes:
+            automatic['paper_size'] = paper_sizes[page_size]
+
+        if scale_mode in {'fit_width', 'actual_size'}:
+            automatic['scale_mode'] = scale_mode
+        return automatic
+
+    def _convert_with_excel(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         """使用 Microsoft Excel 转换 - 优化版"""
         try:
             import comtypes.client
@@ -102,39 +135,24 @@ class ExcelToPdfConverter(BaseConverter):
                     except Exception as e:
                         print(f"列宽调整失败: {e}")
 
-                    # 3. 智能选择纸张大小和方向
+                    # 3. 使用用户页面设置；未指定时延续按列数的自动策略
                     setup = sheet.PageSetup
-                    
-                    # 计算内容宽度（列数）来决定纸张和方向
                     col_count = used_range.Columns.Count
-                    
-                    # 根据列数智能选择纸张和方向
-                    if col_count <= 6:
-                        # 少列：A4纵向
-                        setup.PaperSize = 9  # xlPaperA4
-                        setup.Orientation = 1  # xlPortrait
-                    elif col_count <= 10:
-                        # 中等列数：A4横向
-                        setup.PaperSize = 9  # xlPaperA4
-                        setup.Orientation = 2  # xlLandscape
-                    elif col_count <= 15:
-                        # 较多列：A3横向
-                        setup.PaperSize = 8  # xlPaperA3
-                        setup.Orientation = 2  # xlLandscape
-                    else:
-                        # 很多列：A3横向，允许多页宽
-                        setup.PaperSize = 8  # xlPaperA3
-                        setup.Orientation = 2  # xlLandscape
+                    page_settings = self._resolve_page_settings(options, col_count)
+                    setup.PaperSize = page_settings['paper_size']
+                    setup.Orientation = page_settings['orientation']
 
                     # 4. 设置缩放策略
-                    if col_count <= 15:
-                        # 内容不太宽，强制适应1页宽
+                    if page_settings['scale_mode'] == 'fit_width':
                         setup.Zoom = False
                         setup.FitToPagesWide = 1
                         setup.FitToPagesTall = False
+                    elif page_settings['scale_mode'] == 'actual_size':
+                        setup.Zoom = 100
+                        setup.FitToPagesWide = False
+                        setup.FitToPagesTall = False
                     else:
-                        # 内容很宽，使用固定缩放比例，保证清晰度
-                        setup.Zoom = 85  # 85%缩放，平衡清晰度和完整性
+                        setup.Zoom = 85
                         setup.FitToPagesWide = False
                         setup.FitToPagesTall = False
                     
@@ -204,20 +222,26 @@ class ExcelToPdfConverter(BaseConverter):
                     workbook.Close(SaveChanges=False)
             except:
                 pass
+            finally:
+                workbook = None
             
             try:
                 if excel:
                     excel.Quit()
             except:
                 pass
-            # Bug#10: Force kill zombie Excel process
+            finally:
+                excel = None
+
+            # Release this conversion's COM references without terminating other
+            # Excel instances that may contain unsaved user work.
             try:
-                import os as _os
-                _os.system('taskkill /f /im EXCEL.EXE 2>nul >nul')
-            except:
+                import gc
+                gc.collect()
+            except Exception:
                 pass
 
-    def _convert_with_libreoffice(self, input_path: str, output_path: str) -> Dict[str, Any]:
+    def _convert_with_libreoffice(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         """使用 LibreOffice 转换"""
         if not self.soffice_path:
             raise Exception("LibreOffice not found")
@@ -251,6 +275,25 @@ class ExcelToPdfConverter(BaseConverter):
             
         return {'method': 'libreoffice'}
 
+    def _get_html_fallback_options(self, input_path: str, options: Dict[str, Any]) -> Dict[str, Any]:
+        fallback_options = dict(options)
+        orientation = str(options.get('excel_orientation') or 'auto').lower()
+        if orientation == 'auto':
+            try:
+                from openpyxl import load_workbook
+
+                workbook = load_workbook(input_path, read_only=True, data_only=True)
+                try:
+                    max_columns = max((sheet.max_column or 0) for sheet in workbook.worksheets)
+                finally:
+                    workbook.close()
+                orientation = 'landscape' if max_columns > 6 else 'portrait'
+            except Exception:
+                orientation = 'landscape'
+
+        fallback_options['orientation'] = orientation
+        return fallback_options
+
     def convert(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         """执行转换（混合策略：优先Excel COM，降级LibreOffice）"""
         self.validate_input(input_path)
@@ -261,7 +304,7 @@ class ExcelToPdfConverter(BaseConverter):
         # 策略1: Microsoft Excel (优化版)
         try:
             self.update_progress(input_path, 20)
-            result = self._convert_with_excel(input_path, output_path)
+            result = self._convert_with_excel(input_path, output_path, **options)
             self.update_progress(input_path, 100)
             return {
                 'success': True,
@@ -277,7 +320,7 @@ class ExcelToPdfConverter(BaseConverter):
         if self.soffice_path:
             try:
                 self.update_progress(input_path, 50)
-                result = self._convert_with_libreoffice(input_path, output_path)
+                result = self._convert_with_libreoffice(input_path, output_path, **options)
                 self.update_progress(input_path, 100)
                 return {
                     'success': True,
@@ -305,8 +348,11 @@ class ExcelToPdfConverter(BaseConverter):
             
             with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp:
                 html_path = tmp.name
-            html_result = html_converter.convert(input_path, html_path)
-            pdf_result = pdf_converter.convert(html_path, output_path)
+            fallback_options = self._get_html_fallback_options(input_path, options)
+            html_result = html_converter.convert(input_path, html_path, **fallback_options)
+            if not html_result.get('success'):
+                raise Exception(html_result.get('error') or 'Excel to HTML conversion failed')
+            pdf_result = pdf_converter.convert(html_path, output_path, **fallback_options)
             os.unlink(html_path)
             
             self.update_progress(input_path, 100)

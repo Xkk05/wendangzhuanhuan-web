@@ -1,9 +1,10 @@
 import fitz
 import os
 import zipfile
-from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageStat
+from PIL import Image, ImageDraw, ImageChops, ImageStat
 from .base import BaseConverter
 from typing import Dict, Any, List
+from backend.utils.font_utils import get_pil_font
 
 class PdfToImageConverter(BaseConverter):
     """PDF 到 图片转换器（优化版 - 支持文件夹输出和水印）
@@ -186,7 +187,7 @@ class PdfToImageConverter(BaseConverter):
             raise Exception(f"PDF to Image conversion failed: {str(e)}")
     
     def _is_image_empty(self, img: Image.Image, threshold: int = 10) -> bool:
-        """检查图片是否为空白（全背景色）"""
+        """检查图片是否为空白或仅包含浏览器打印产生的微小噪点。"""
         try:
             if img.mode != 'RGB':
                 temp_img = img.convert('RGB')
@@ -198,9 +199,15 @@ class PdfToImageConverter(BaseConverter):
             diff = ImageChops.difference(temp_img, bg)
             diff_gray = diff.convert('L')
             
-            # 如果最大差异小于阈值，认为是空白
             stat = ImageStat.Stat(diff_gray)
-            return stat.max[0] < threshold
+            if stat.extrema[0][1] < threshold:
+                return True
+
+            # Chromium 偶尔会在末尾输出一个几乎全白的页面，其中只有极少量
+            # 抗锯齿像素。仅用最大值会把它当作有效页并拼接到长图末尾。
+            changed_pixels = sum(diff_gray.histogram()[threshold:])
+            content_ratio = changed_pixels / (temp_img.width * temp_img.height)
+            return content_ratio < 0.0001 and stat.mean[0] < 1
         except Exception:
             return False
 
@@ -276,44 +283,7 @@ class PdfToImageConverter(BaseConverter):
             return img
     
     def _get_watermark_font(self, text: str, size: int):
-        has_non_ascii = any(ord(ch) > 127 for ch in text)
-        
-        chinese_fonts = [
-            "msyh.ttc",
-            "msyh.ttf",
-            "simhei.ttf",
-            "simhei.ttc",
-            "simfang.ttf",
-            "simfang.ttc",
-            "simkai.ttf",
-            "simkai.ttc",
-            "simsun.ttc",
-        ]
-        latin_fonts = ["arial.ttf"]
-        
-        if has_non_ascii:
-            candidates = chinese_fonts + latin_fonts
-        else:
-            candidates = latin_fonts + chinese_fonts
-        font_paths = []
-        windows_dir = os.environ.get("WINDIR")
-        if windows_dir:
-            fonts_dir = os.path.join(windows_dir, "Fonts")
-        else:
-            fonts_dir = None
-        
-        for name in candidates:
-            font_paths.append(name)
-            if fonts_dir:
-                font_paths.append(os.path.join(fonts_dir, name))
-        
-        for path in font_paths:
-            try:
-                return ImageFont.truetype(path, size)
-            except Exception:
-                continue
-        
-        return ImageFont.load_default()
+        return get_pil_font(size)
     
     def _apply_watermark(self, img: Image.Image, text: str, opacity: int, 
                         size: int, color: str, angle: int, position: str = "center") -> Image.Image:

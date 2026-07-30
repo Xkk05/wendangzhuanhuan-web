@@ -26,6 +26,7 @@
     "no_results": "Keine entsprechenden Funktionen gefunden"
   },
   "home": {
+    "desktop_app": "Desktop-App",
     "title": "ConvertTool",
     "subtitle": "Einfaches, schnelles und sicheres Online-Dateikonvertierungstool",
     "categories": {

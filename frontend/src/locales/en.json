@@ -28,6 +28,7 @@
   "home": {
     "title": "ConvertTool",
     "subtitle": "Simple, fast, and secure online file conversion tool",
+    "desktop_app": "Desktop App",
     "all_categories": "All Categories",
     "categories": {
       "docx": "DOCX Conversion",
@@ -148,6 +149,10 @@
       "remove_empty_tags": "Remove Empty Tags",
       "page_settings": "Page Settings",
       "page_size": "Page Size",
+      "page_scaling": "Page Scaling",
+      "fit_page_width": "Fit to Page Width",
+      "actual_size": "Actual Size",
+      "auto": "Auto",
       "animation_settings": "Animation Settings",
       "animation_delay": "Animation Delay (ms)",
       "loop_animation": "Loop Playback",

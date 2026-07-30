@@ -26,6 +26,7 @@
     "no_results": "未找到相關功能"
   },
   "home": {
+    "desktop_app": "PC 桌面版",
     "title": "ConvertTool",
     "subtitle": "簡單、快速、安全的線上檔案轉換工具",
     "categories": {

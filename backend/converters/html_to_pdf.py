@@ -6,11 +6,14 @@ import logging
 import subprocess
 import platform
 import shutil
+import re
 from pathlib import Path
 # html2image and PIL imports removed as they are no longer used for browser print method
 # kept reportlab for code mode
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from backend.utils.font_utils import register_reportlab_cjk_font
+from backend.utils.text_utils import read_text_file
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -54,6 +57,68 @@ class HtmlToPdfConverter(BaseConverter):
                 return path
         return None
 
+    def _prepare_html_content(self, html_content: str, options: dict) -> str:
+        soup = BeautifulSoup(html_content, 'html.parser')
+
+        css_handling = str(options.get('css_handling') or '').strip().lower()
+        remove_css = 'remove' in css_handling or '移除' in css_handling
+        if remove_css:
+            for tag in soup.find_all('style'):
+                tag.decompose()
+            for tag in soup.find_all('link'):
+                rel = tag.get('rel') or []
+                if any(str(item).lower() == 'stylesheet' for item in rel):
+                    tag.decompose()
+            for tag in soup.find_all(style=True):
+                del tag['style']
+
+        if options.get('remove_scripts'):
+            for tag in soup.find_all('script'):
+                tag.decompose()
+
+        if options.get('remove_comments'):
+            for comment in soup.find_all(string=lambda value: isinstance(value, Comment)):
+                comment.extract()
+
+        if options.get('remove_empty_tags'):
+            for tag in list(soup.find_all()):
+                if tag.name not in {'html', 'head', 'body', 'meta', 'link', 'img', 'br', 'hr', 'input'}:
+                    if not tag.get_text(strip=True) and not tag.find(True):
+                        tag.decompose()
+
+        custom_css = str(options.get('custom_css') or '').strip()
+        if custom_css and not remove_css:
+            style = soup.new_tag('style')
+            style.string = custom_css
+            (soup.head or soup).append(style)
+
+        page_size = str(options.get('page_size') or '').strip()
+        orientation = str(options.get('orientation') or '').strip().lower()
+        if page_size or orientation:
+            normalized_size = page_size if page_size in {'A3', 'A4', 'Letter', 'Legal'} else 'A4'
+            is_landscape = orientation in {'landscape', '横向', '橫向'}
+            page_style = soup.new_tag('style')
+            page_style.string = (
+                f'@page {{ size: {normalized_size} '
+                f'{"landscape" if is_landscape else "portrait"}; margin: 10mm; }}'
+            )
+            (soup.head or soup).append(page_style)
+
+        if soup.head:
+            charset_meta = soup.head.find('meta', attrs={'charset': True})
+            if charset_meta:
+                charset_meta['charset'] = 'utf-8'
+            else:
+                meta = soup.new_tag('meta')
+                meta['charset'] = 'utf-8'
+                soup.head.insert(0, meta)
+
+        result = str(soup)
+        if options.get('compress_html'):
+            result = re.sub(r'>\s+<', '><', result)
+            result = re.sub(r'[ \t]+', ' ', result)
+        return result
+
     def convert(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         """
         Convert HTML to PDF using browser's built-in PDF printing.
@@ -78,7 +143,12 @@ class HtmlToPdfConverter(BaseConverter):
                 raise Exception("No supported browser (Chrome/Edge) found.")
                 
             logger.info(f"Using browser: {browser_path}")
-            input_uri = Path(input_path).resolve().as_uri()
+            html_content = read_text_file(input_path, options.get('encoding'))
+            prepared_html = self._prepare_html_content(html_content, options)
+            render_input_path = output_path + '.render.html'
+            with open(render_input_path, 'w', encoding='utf-8') as render_file:
+                render_file.write(prepared_html)
+            input_uri = Path(render_input_path).resolve().as_uri()
             
             # Construct command
             # --headless: Run without UI
@@ -132,12 +202,17 @@ class HtmlToPdfConverter(BaseConverter):
             # Get file size
             size = os.path.getsize(output_path)
             
-            return {
+            response = {
                 'success': True,
                 'output_path': output_path,
                 'size': size,
                 'method': 'browser_print'
             }
+            try:
+                os.remove(render_input_path)
+            except Exception:
+                pass
+            return response
             
         except Exception as e:
             self.cleanup_on_error(output_path)
@@ -198,7 +273,7 @@ class HtmlToPdfConverter(BaseConverter):
 
     def _convert_as_code(self, input_path: str, output_path: str, options: dict) -> Dict[str, Any]:
         """将HTML源代码转换为PDF（代码格式）- 使用ReportLab"""
-        from reportlab.lib.pagesizes import A4, A3, letter, legal
+        from reportlab.lib.pagesizes import A4, A3, letter, legal, landscape
         from reportlab.lib.units import cm
         from reportlab.pdfgen import canvas
         from reportlab.pdfbase import pdfmetrics
@@ -207,27 +282,12 @@ class HtmlToPdfConverter(BaseConverter):
         
         self.update_progress(input_path, 20)
         
-        # Register a CJK-capable font when available so containerized Linux builds
-        # can still render Chinese text.
-        font_name = 'Courier'
-        for font_path, kwargs in [
-            (r"C:\Windows\Fonts\msyh.ttc", {'subfontIndex': 0}),
-            (r"C:\Windows\Fonts\simsun.ttc", {'subfontIndex': 0}),
-            ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', {'subfontIndex': 0}),
-            ('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc', {}),
-            ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', {}),
-        ]:
-            try:
-                if os.path.exists(font_path):
-                    pdfmetrics.registerFont(TTFont('ChineseFont', font_path, **kwargs))
-                    font_name = 'ChineseFont'
-                    break
-            except Exception:
-                continue
-        
-        # Read HTML source code
-        with open(input_path, 'r', encoding='utf-8') as f:
-            html_code = f.read()
+        font_name = register_reportlab_cjk_font()
+
+        html_code = self._prepare_html_content(
+            read_text_file(input_path, options.get('encoding')),
+            options
+        )
         
         self.update_progress(input_path, 40)
         
@@ -240,6 +300,9 @@ class HtmlToPdfConverter(BaseConverter):
             'Legal': legal
         }
         page_size = page_sizes.get(page_size_name, A4)
+        orientation = str(options.get('orientation') or '').strip().lower()
+        if orientation in {'landscape', '横向', '橫向'}:
+            page_size = landscape(page_size)
         
         # Create PDF
         c = canvas.Canvas(output_path, pagesize=page_size)

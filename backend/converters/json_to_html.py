@@ -1,6 +1,8 @@
 import json
 from .base import BaseConverter
 from typing import Dict, Any
+from backend.utils.structured_text import build_text_html, extract_json_texts
+from backend.utils.text_utils import read_text_file
 
 class JsonToHtmlConverter(BaseConverter):
     """JSON 到 HTML 转换器"""
@@ -10,37 +12,15 @@ class JsonToHtmlConverter(BaseConverter):
         self.supported_formats = ['html']
     
     def convert(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
-        """将 JSON 转换为 HTML 表格或树状视图"""
+        """将 JSON 中的正文文本转换为可阅读的 HTML"""
         try:
             self.validate_input(input_path)
             
-            with open(input_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # 简单的格式化输出，使用 <pre> 标签保留格式
-            # 实际生产中可以使用 json2html 库，但为了减少依赖，这里用简单的 pretty print
-            json_str = json.dumps(data, indent=4, ensure_ascii=False)
-            
-            html_content = [
-                '<!DOCTYPE html>',
-                '<html>',
-                '<head>',
-                '<meta charset="utf-8">',
-                '<title>JSON View</title>',
-                '<style>',
-                'body { font-family: Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace; padding: 20px; background-color: #f5f5f5; }',
-                'pre { background-color: white; padding: 20px; border-radius: 5px; border: 1px solid #ddd; overflow: auto; }',
-                '</style>',
-                '</head>',
-                '<body>',
-                '<h2>JSON Content</h2>',
-                f'<pre>{json_str}</pre>',
-                '</body>',
-                '</html>'
-            ]
+            data = json.loads(read_text_file(input_path, options.get('encoding')))
+            html_content = build_text_html('JSON Content', extract_json_texts(data))
             
             with open(output_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(html_content))
+                f.write(html_content)
             
             return {
                 'success': True,

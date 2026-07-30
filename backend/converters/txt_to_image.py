@@ -2,6 +2,8 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 from .base import BaseConverter
 from typing import Dict, Any
+from backend.utils.font_utils import get_pil_font
+from backend.utils.text_utils import read_text_file
 
 
 class TxtToImageConverter(BaseConverter):
@@ -24,8 +26,7 @@ class TxtToImageConverter(BaseConverter):
             self.validate_input(input_path)
             self.update_progress(input_path, 10)
             
-            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
-                text = f.read()
+            text = read_text_file(input_path, options.get('encoding'))
             
             self.update_progress(input_path, 20)
             
@@ -37,24 +38,7 @@ class TxtToImageConverter(BaseConverter):
             max_width = options.get('max_width', 800)
             line_spacing = options.get('line_spacing', 8)
             
-            # 尝试加载中文字体
-            font = None
-            font_paths = [
-                r"C:\Windows\Fonts\msyh.ttc",
-                r"C:\Windows\Fonts\simsun.ttc",
-                r"C:\Windows\Fonts\simhei.ttf",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            ]
-            for font_path in font_paths:
-                if os.path.exists(font_path):
-                    try:
-                        font = ImageFont.truetype(font_path, font_size)
-                        break
-                    except:
-                        continue
-            
-            if font is None:
-                font = ImageFont.load_default()
+            font = get_pil_font(font_size)
             
             self.update_progress(input_path, 30)
             

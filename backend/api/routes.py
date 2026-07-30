@@ -1268,6 +1268,8 @@ async def convert_general(
     remove_empty_tags: Optional[bool] = Form(False),
     page_size: Optional[str] = Form(None),
     orientation: Optional[str] = Form(None),
+    excel_orientation: Optional[str] = Form('auto'),
+    excel_scale_mode: Optional[str] = Form('auto'),
     # 图片选项
     quality: Optional[int] = Form(85),
     background_color: Optional[str] = Form('#ffffff'),
@@ -1285,7 +1287,12 @@ async def convert_general(
     pdf_page_range: Optional[str] = Form(None),
     # GIF 动画选项
     animation_delay: Optional[int] = Form(100),
-    loop_animation: Optional[bool] = Form(True)
+    loop_animation: Optional[bool] = Form(True),
+    # 语音选项
+    rate: Optional[int] = Form(150),
+    volume: Optional[float] = Form(1.0),
+    pitch: Optional[float] = Form(1.0),
+    language: Optional[str] = Form(None)
 ):
     """
     通用转换接口 (DOCX, HTML, PDF, TXT)
@@ -1336,6 +1343,8 @@ async def convert_general(
             'remove_empty_tags': remove_empty_tags,
             'page_size': page_size,
             'orientation': orientation,
+            'excel_orientation': excel_orientation,
+            'excel_scale_mode': excel_scale_mode,
             'quality': quality,
             'background_color': background_color,
             'watermark_text': watermark_text,
@@ -1348,7 +1357,11 @@ async def convert_general(
             'pdf_page_selection': pdf_page_selection,
             'pdf_page_range': pdf_page_range,
             'animation_delay': animation_delay,
-            'loop_animation': loop_animation
+            'loop_animation': loop_animation,
+            'rate': rate,
+            'volume': volume,
+            'pitch': pitch,
+            'language': language
         }
         
         # 5. 执行转换

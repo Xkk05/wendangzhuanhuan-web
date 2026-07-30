@@ -26,6 +26,7 @@
     "no_results": "Walang natagpuang katangian na may kaugnayan"
   },
   "home": {
+    "desktop_app": "Desktop App",
     "title": "ConvertTool",
     "subtitle": "Simpleng, mabilis, at ligtas na online na kagamitan sa pagpapalit ng file",
     "categories": {
