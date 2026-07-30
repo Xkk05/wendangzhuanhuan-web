@@ -10,6 +10,10 @@ import { categories } from '../data';
 import { useUserStore } from '../stores/useUserStore';
 import { createSafeTranslator } from '../utils/safeTranslation';
 import { persistCurrentToolSnapshot } from '../utils/authStorage';
+import {
+  clearSelectedConversionResults,
+  getSelectedFileQueue,
+} from '../utils/fileSelection';
 
 // 文件类型映射表
 const FILE_TYPE_MAP = {
@@ -790,7 +794,7 @@ function ToolDetailContent({ toolName, onBack }) {
   }, [t]);
 
   const handleConvert = async () => {
-    const filesToConvert = selectedFiles.size > 0 ? files.filter(f => selectedFiles.has(f.id)) : files;
+    const filesToConvert = getSelectedFileQueue(files, selectedFiles);
     if (filesToConvert.length === 0) return;
 
     const totalEstimate = filesToConvert.reduce((sum, f) => {
@@ -856,7 +860,9 @@ function ToolDetailContent({ toolName, onBack }) {
     }
 
     setIsConverting(true);
-    setConversionResults({});
+    setConversionResults((previousResults) => (
+      clearSelectedConversionResults(previousResults, selectedFiles)
+    ));
     setProgress({ current: 0, total: filesToConvert.length, percent: 0 });
     
     // Create new AbortController
@@ -877,7 +883,7 @@ function ToolDetailContent({ toolName, onBack }) {
     const toastId = toast.loading(isPptToVideo ? t('toolDetail.messages.converting_video_wait') : t('toolDetail.messages.processing_files'));
 
     try {
-      // Loop through all files
+      // Loop through the selected conversion queue
       for (let i = 0; i < filesToConvert.length; i++) {
         if (signal.aborted) {
           throw new Error(t('toolDetail.messages.operation_cancelled'));
@@ -2393,9 +2399,9 @@ function ToolDetailContent({ toolName, onBack }) {
               <button 
                 className="file-action-btn file-action-btn-primary"
                 onClick={handleConvert}
-                disabled={files.length === 0}
+                disabled={selectedFiles.size === 0}
               >
-                {selectedFiles.size > 0 ? t('toolDetail.convert_selected', { count: selectedFiles.size }) : t('toolDetail.start_conversion')}
+                {t('toolDetail.convert_selected', { count: selectedFiles.size })}
               </button>
             )}
             <button className="file-action-btn" onClick={handleClearAll} disabled={files.length === 0 || isConverting}>
@@ -2452,9 +2458,9 @@ function ToolDetailContent({ toolName, onBack }) {
                     />
                   </div>
                   <div className="file-item-left">
-                    <div className={`file-icon-circle ${isConverting ? 'loading' : ''}`}>
+                    <div className={`file-icon-circle ${isConverting && selectedFiles.has(fileObj.id) ? 'loading' : ''}`}>
                       <span className="file-type-text">{source}</span>
-                      {isConverting && <div className="loading-ring"></div>}
+                      {isConverting && selectedFiles.has(fileObj.id) && <div className="loading-ring"></div>}
                     </div>
                     <div className="file-info">
                       <div className="file-name" title={fileObj.file.name}>
@@ -2478,7 +2484,7 @@ function ToolDetailContent({ toolName, onBack }) {
                     {conversionResults[fileObj.id] && conversionResults[fileObj.id].error && (
                       <span className="status-btn error">{t('toolDetail.error')}</span>
                     )}
-                    {!conversionResults[fileObj.id] && isConverting && (
+                    {!conversionResults[fileObj.id] && isConverting && selectedFiles.has(fileObj.id) && (
                       <span className="status-btn converting">{t('toolDetail.status_converting')}</span>
                     )}
                     <button 

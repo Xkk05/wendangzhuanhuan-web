@@ -8,6 +8,7 @@
     "build": "npm run seo:generate && vite build",
     "build:electron": "npm run seo:generate && vite build --mode electron",
     "seo:generate": "node ./scripts/generate-seo.mjs",
+    "test": "node --test src/utils/fileSelection.test.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },
