@@ -2,6 +2,8 @@ from typing import Dict, Any
 import os
 import shutil
 import logging
+import tempfile
+from pathlib import Path
 from .base import BaseConverter
 from backend.utils.logger import setup_logger
 
@@ -241,38 +243,129 @@ class ExcelToPdfConverter(BaseConverter):
             except Exception:
                 pass
 
-    def _convert_with_libreoffice(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
-        """使用 LibreOffice 转换"""
-        if not self.soffice_path:
-            raise Exception("LibreOffice not found")
-            
+    def _run_libreoffice_convert(
+        self,
+        input_path: str,
+        target_format: str,
+        output_dir: str,
+        profile_dir: str,
+    ) -> str:
+        """Run one isolated LibreOffice conversion and return the generated path."""
         import subprocess
-        
-        output_dir = os.path.dirname(output_path)
-        
-        # 构建命令
+
+        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(profile_dir, exist_ok=True)
         cmd = [
             self.soffice_path,
             '--headless',
-            '--convert-to', 'pdf',
+            '--nologo',
+            '--nodefault',
+            '--nofirststartwizard',
+            f'-env:UserInstallation={Path(profile_dir).resolve().as_uri()}',
+            '--convert-to', target_format,
             '--outdir', output_dir,
             input_path
         ]
-        
+
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        
         if result.returncode != 0:
-            raise Exception(f"LibreOffice conversion failed: {result.stderr}")
-            
-        # LibreOffice 会生成同名 PDF，需要检查并重命名（如果需要）
+            detail = result.stderr.strip() or result.stdout.strip()
+            raise Exception(f"LibreOffice conversion failed: {detail}")
+
         base_name = os.path.splitext(os.path.basename(input_path))[0]
-        generated_pdf = os.path.join(output_dir, f"{base_name}.pdf")
-        
-        if generated_pdf != output_path and os.path.exists(generated_pdf):
+        generated_path = os.path.join(output_dir, f"{base_name}.{target_format}")
+        if not os.path.exists(generated_path):
+            raise Exception(f"LibreOffice did not create the expected {target_format} file")
+        return generated_path
+
+    def _prepare_libreoffice_workbook(
+        self,
+        input_path: str,
+        output_path: str,
+        options: Dict[str, Any],
+    ) -> None:
+        """Write page settings into a temporary OOXML workbook for LibreOffice."""
+        from openpyxl import load_workbook
+        from openpyxl.worksheet.properties import PageSetupProperties
+
+        keep_vba = os.path.splitext(input_path)[1].lower() == '.xlsm'
+        workbook = load_workbook(input_path, keep_vba=keep_vba)
+        try:
+            for sheet in workbook.worksheets:
+                page_settings = self._resolve_page_settings(options, max(sheet.max_column or 1, 1))
+                page_setup = sheet.page_setup
+                page_setup.paperSize = str(page_settings['paper_size'])
+                page_setup.orientation = (
+                    sheet.ORIENTATION_LANDSCAPE
+                    if page_settings['orientation'] == 2
+                    else sheet.ORIENTATION_PORTRAIT
+                )
+
+                setup_properties = sheet.sheet_properties.pageSetUpPr
+                if setup_properties is None:
+                    setup_properties = PageSetupProperties()
+                    sheet.sheet_properties.pageSetUpPr = setup_properties
+
+                if page_settings['scale_mode'] == 'fit_width':
+                    setup_properties.fitToPage = True
+                    page_setup.fitToWidth = 1
+                    page_setup.fitToHeight = 0
+                    page_setup.scale = None
+                elif page_settings['scale_mode'] == 'actual_size':
+                    setup_properties.fitToPage = False
+                    page_setup.fitToWidth = None
+                    page_setup.fitToHeight = None
+                    page_setup.scale = 100
+                else:
+                    setup_properties.fitToPage = False
+                    page_setup.fitToWidth = None
+                    page_setup.fitToHeight = None
+                    page_setup.scale = 85
+
+                sheet.page_margins.left = 0.2
+                sheet.page_margins.right = 0.2
+                sheet.page_margins.top = 0.3
+                sheet.page_margins.bottom = 0.3
+                sheet.page_margins.header = 0.1
+                sheet.page_margins.footer = 0.1
+                sheet.print_options.horizontalCentered = True
+
+            workbook.save(output_path)
+        finally:
+            workbook.close()
+
+    def _convert_with_libreoffice(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
+        """Use LibreOffice after applying the requested workbook page settings."""
+        if not self.soffice_path:
+            raise Exception("LibreOffice not found")
+
+        output_path = os.path.abspath(output_path)
+        with tempfile.TemporaryDirectory(prefix='excel-to-pdf-') as temp_dir:
+            source_path = os.path.abspath(input_path)
+            source_extension = os.path.splitext(source_path)[1].lower()
+
+            if source_extension == '.xls':
+                source_path = self._run_libreoffice_convert(
+                    source_path,
+                    'xlsx',
+                    temp_dir,
+                    os.path.join(temp_dir, 'profile-xls'),
+                )
+
+            prepared_extension = '.xlsm' if source_extension == '.xlsm' else '.xlsx'
+            prepared_path = os.path.join(temp_dir, f'prepared{prepared_extension}')
+            self._prepare_libreoffice_workbook(source_path, prepared_path, options)
+            generated_pdf = self._run_libreoffice_convert(
+                prepared_path,
+                'pdf',
+                temp_dir,
+                os.path.join(temp_dir, 'profile-pdf'),
+            )
+
             if os.path.exists(output_path):
                 os.remove(output_path)
-            os.rename(generated_pdf, output_path)
-            
+            shutil.move(generated_pdf, output_path)
+
         return {'method': 'libreoffice'}
 
     def _get_html_fallback_options(self, input_path: str, options: Dict[str, Any]) -> Dict[str, Any]:

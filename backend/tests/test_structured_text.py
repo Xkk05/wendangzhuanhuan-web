@@ -1,4 +1,5 @@
 from PIL import Image
+from openpyxl import Workbook, load_workbook
 
 from backend.converters.excel_to_pdf import ExcelToPdfConverter
 from backend.converters.html_to_pdf import HtmlToPdfConverter
@@ -46,6 +47,38 @@ def test_excel_page_settings_preserve_wide_sheet_auto_scale():
     settings = ExcelToPdfConverter()._resolve_page_settings({}, col_count=20)
 
     assert settings == {'paper_size': 8, 'orientation': 2, 'scale_mode': 'scaled_85'}
+
+
+def test_libreoffice_workbook_contains_requested_print_settings(tmp_path):
+    source = tmp_path / 'source.xlsx'
+    prepared = tmp_path / 'prepared.xlsx'
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.append(['Name', 'January', 'February'])
+    worksheet.append(['Item', 10, 20])
+    workbook.save(source)
+    workbook.close()
+
+    ExcelToPdfConverter()._prepare_libreoffice_workbook(
+        str(source),
+        str(prepared),
+        {
+            'page_size': 'A4',
+            'excel_orientation': 'landscape',
+            'excel_scale_mode': 'fit_width',
+        },
+    )
+
+    prepared_workbook = load_workbook(prepared)
+    try:
+        prepared_sheet = prepared_workbook.active
+        assert prepared_sheet.page_setup.paperSize == 9
+        assert prepared_sheet.page_setup.orientation == 'landscape'
+        assert prepared_sheet.page_setup.fitToWidth == 1
+        assert prepared_sheet.page_setup.fitToHeight == 0
+        assert prepared_sheet.sheet_properties.pageSetUpPr.fitToPage is True
+    finally:
+        prepared_workbook.close()
 
 
 def test_xml_display_exports_keep_text_and_remove_source_tags(tmp_path):
