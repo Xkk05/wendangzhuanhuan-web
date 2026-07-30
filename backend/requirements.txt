@@ -23,6 +23,7 @@ gtts
 pyttsx3
 pydub
 openpyxl
+xlrd==2.0.1
 python-pptx
 pdfplumber
 pandas

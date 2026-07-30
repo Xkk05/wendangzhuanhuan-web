@@ -1,7 +1,7 @@
-import shutil
-from bs4 import BeautifulSoup
 from .base import BaseConverter
 from typing import Dict, Any
+from backend.utils.html_content import prepare_content_soup, soup_text
+from backend.utils.text_utils import read_text_file
 
 
 class HtmlToTxtConverter(BaseConverter):
@@ -26,8 +26,7 @@ class HtmlToTxtConverter(BaseConverter):
             # 获取选项
             mode = options.get('mode', 'text')  # 'source' or 'text'
             
-            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
-                html_content = f.read()
+            html_content = read_text_file(input_path, options.get('encoding'))
             
             self.update_progress(input_path, 30)
             
@@ -35,32 +34,9 @@ class HtmlToTxtConverter(BaseConverter):
                 # 源码模式：保留完整 HTML 源码
                 output_content = html_content
             else:
-                # 文本提取模式：提取纯文本
-                soup = BeautifulSoup(html_content, 'html.parser')
-                
-                # 移除脚本和样式
-                for script in soup(['script', 'style']):
-                    script.decompose()
-                
+                soup = prepare_content_soup(html_content, options)
                 self.update_progress(input_path, 50)
-                
-                # 提取文本
-                text = soup.get_text(separator='\n', strip=True)
-                
-                # 清理多余空行
-                lines = [line.strip() for line in text.split('\n')]
-                cleaned_lines = []
-                prev_empty = False
-                
-                for line in lines:
-                    is_empty = not line
-                    if is_empty and prev_empty:
-                        continue  # 跳过连续空行
-                    cleaned_lines.append(line)
-                    prev_empty = is_empty
-                
-                output_content = '\n'.join(cleaned_lines)
-                
+                output_content = soup_text(soup)
                 self.update_progress(input_path, 80)
             
             # 写入文件

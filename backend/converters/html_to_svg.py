@@ -82,70 +82,20 @@ class HtmlToSvgConverter(BaseConverter):
         return None
     
     def _convert_via_screenshot(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
-        """通过截图方式转换：HTML -> PNG -> SVG（嵌入图片）"""
-        if not self.hti:
-            raise Exception("浏览器初始化失败，无法进行截图转换")
-        
-        # 读取 HTML 内容
-        html_content = read_text_file(input_path, options.get('encoding'))
-        
+        """Render the complete document to a merged image and embed it in SVG."""
+        from .html_to_image import HtmlToImageConverter
+
         self.update_progress(input_path, 20)
-        
-        # 注入白色背景
-        bg_css = '''<style>
-            html, body { 
-                background-color: #ffffff !important; 
-                margin: 0;
-                padding: 20px;
-            }
-        </style>'''
-        
-        if '<head>' in html_content:
-            html_content = html_content.replace('<head>', f'<head>{bg_css}')
-        elif '<html>' in html_content:
-            html_content = html_content.replace('<html>', f'<html><head>{bg_css}</head>')
-        else:
-            html_content = f'<html><head>{bg_css}</head><body>{html_content}</body></html>'
-        
-        # 配置参数
-        width = options.get('width', 1280)
-        height = options.get('height', 800)
-        
-        self.update_progress(input_path, 30)
-        
-        # 设置输出目录
         output_dir = os.path.dirname(output_path) or os.getcwd()
-        self.hti.output_path = output_dir
-        
-        # 截图为 PNG
-        temp_filename = os.path.basename(output_path) + '_temp.png'
-        
-        self.hti.screenshot(
-            html_str=html_content,
-            save_as=temp_filename,
-            size=(width, height)
-        )
-        
-        temp_path = os.path.join(output_dir, temp_filename)
-        
-        if not os.path.exists(temp_path):
-            raise Exception("截图失败，未生成图片文件")
-        
+        temp_path = os.path.join(output_dir, os.path.basename(output_path) + '_temp.png')
+        HtmlToImageConverter().convert(input_path, temp_path, **options)
         self.update_progress(input_path, 60)
-        
-        # 读取PNG并转换为base64
         with open(temp_path, 'rb') as img_file:
             img_data = img_file.read()
             img_base64 = base64.b64encode(img_data).decode('utf-8')
-        
-        # 获取图片尺寸
-        img = Image.open(temp_path)
-        img_width, img_height = img.size
-        img.close()
-        
+        with Image.open(temp_path) as img:
+            img_width, img_height = img.size
         self.update_progress(input_path, 80)
-        
-        # 创建SVG，嵌入PNG图片
         svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" 
      xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -157,18 +107,13 @@ class HtmlToSvgConverter(BaseConverter):
            xlink:href="data:image/png;base64,{img_base64}" />
 </svg>'''
         
-        # 保存SVG文件
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(svg_content)
-        
-        # 清理临时文件
         try:
             os.remove(temp_path)
-        except:
+        except OSError:
             pass
-        
         self.update_progress(input_path, 100)
-        
         return {
             'success': True,
             'output_path': output_path,
@@ -181,8 +126,8 @@ class HtmlToSvgConverter(BaseConverter):
     def _convert_to_text_svg(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         html_content = read_text_file(input_path, options.get('encoding'))
         try:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(html_content, 'html.parser')
+            from backend.utils.html_content import prepare_content_soup
+            soup = prepare_content_soup(html_content, options)
             text_content = soup.get_text('\n')
         except Exception:
             text_content = html_content

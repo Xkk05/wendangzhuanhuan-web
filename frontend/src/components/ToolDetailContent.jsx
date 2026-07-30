@@ -1049,7 +1049,6 @@ function ToolDetailContent({ toolName, onBack }) {
                 options.rate = Math.round(convertOptions.speechSpeed * 150);
                 options.volume = 1.0;
                 options.pitch = convertOptions.speechPitch;
-                options.language = i18n.language?.startsWith('zh') ? 'zh-CN' : i18n.language;
               }
             }
             
@@ -1302,6 +1301,16 @@ function ToolDetailContent({ toolName, onBack }) {
               >
                 + {t('toolDetail.select_files')}
               </button>
+              <button
+                type="button"
+                className="select-file-btn select-folder-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  folderInputRef.current?.click();
+                }}
+              >
+                {t('toolDetail.select_upload_folder')}
+              </button>
             </div>
           </div>
         </div>
@@ -1322,12 +1331,12 @@ function ToolDetailContent({ toolName, onBack }) {
                 <div className="html-specific-options">
                   {/* Preview Options */}
                   <div className={`option-group ${expandedSections.preview ? 'expanded' : ''}`}>
-                    <div className="option-group-header" onClick={() => toggleSection('preview')}>
+                    <button type="button" className="option-group-header" onClick={() => toggleSection('preview')} aria-expanded={expandedSections.preview}>
                       <span>{t('toolDetail.options.preview_options')}</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expandedSections.preview ? 'rotate(180deg)' : 'rotate(0)' }}>
                       <polyline points="6 9 12 15 18 9" />
                     </svg>
-                  </div>
+                  </button>
                   {expandedSections.preview && (
                     <div className="option-group-content">
                       <label className="checkbox-label">
@@ -1359,12 +1368,12 @@ function ToolDetailContent({ toolName, onBack }) {
 
                 {/* CSS Options */}
                 <div className={`option-group ${expandedSections.css ? 'expanded' : ''}`}>
-                  <div className="option-group-header" onClick={() => toggleSection('css')}>
+                  <button type="button" className="option-group-header" onClick={() => toggleSection('css')} aria-expanded={expandedSections.css}>
                     <span>{t('toolDetail.options.css_options')}</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expandedSections.css ? 'rotate(180deg)' : 'rotate(0)' }}>
                       <polyline points="6 9 12 15 18 9" />
                     </svg>
-                  </div>
+                  </button>
                   {expandedSections.css && (
                     <div className="option-group-content">
                       <div className="sub-option">
@@ -1396,12 +1405,12 @@ function ToolDetailContent({ toolName, onBack }) {
 
                 {/* Cleanup Options */}
                 <div className={`option-group ${expandedSections.cleanup ? 'expanded' : ''}`}>
-                  <div className="option-group-header" onClick={() => toggleSection('cleanup')}>
+                  <button type="button" className="option-group-header" onClick={() => toggleSection('cleanup')} aria-expanded={expandedSections.cleanup}>
                     <span>{t('toolDetail.options.cleanup_options')}</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expandedSections.cleanup ? 'rotate(180deg)' : 'rotate(0)' }}>
                       <polyline points="6 9 12 15 18 9" />
                     </svg>
-                  </div>
+                  </button>
                   {expandedSections.cleanup && (
                     <div className="option-group-content">
                       <div className="cleanup-checkboxes">
@@ -2339,9 +2348,12 @@ function ToolDetailContent({ toolName, onBack }) {
                             { pos: 'bottom-right', icon: <path d="M7 7l10 10M17 7v10H7" /> }
                           ].map(item => (
                             <button 
+                              type="button"
                               key={item.pos}
                               className={`pos-btn ${watermarkOptions.position === item.pos ? 'active' : ''}`}
                               onClick={() => setWatermarkOptions({...watermarkOptions, position: item.pos})}
+                              title={t(`toolDetail.options.watermark_positions.${item.pos}`)}
+                              aria-label={t(`toolDetail.options.watermark_positions.${item.pos}`)}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                 {item.icon}
@@ -2389,7 +2401,11 @@ function ToolDetailContent({ toolName, onBack }) {
             <button className="file-action-btn" onClick={handleClearAll} disabled={files.length === 0 || isConverting}>
               {t('toolDetail.clear_all')}
             </button>
-            <button className="file-action-btn" disabled={files.length === 0 || isConverting} onClick={handleDownloadAll}>
+            <button
+              className="file-action-btn"
+              disabled={isConverting || !Object.values(conversionResults).some((result) => result && !result.error && result.download_url)}
+              onClick={handleDownloadAll}
+            >
               {t('toolDetail.download_all')}
             </button>
           </div>

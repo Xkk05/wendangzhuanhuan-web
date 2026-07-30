@@ -237,6 +237,7 @@ class ConverterService:
         
         converter = self.converters[converter_key]
         print(f"[ConverterService] 使用转换器: {type(converter).__name__}")
+        output_format = 'docx' if converter_key == ('pdf', 'doc') else target_format
         
         # 生成输出路径，使用优化的文件名策略
         if original_filename:
@@ -245,23 +246,23 @@ class ConverterService:
             
             # 移除原始扩展名，保留文件名
             base_name = os.path.splitext(safe_filename)[0]
-            display_name = f"{base_name}.{target_format}"
+            display_name = f"{base_name}.{output_format}"
             
             # 生成短哈希（6位）确保唯一性
             short_hash = str(uuid.uuid4())[:8]
-            storage_filename = f"{base_name}_{short_hash}.{target_format}"
+            storage_filename = f"{base_name}_{short_hash}.{output_format}"
             output_path = os.path.join(DOWNLOAD_DIR, storage_filename)
             
             # 如果文件已存在（极小概率），添加数字后缀
             counter = 1
             while os.path.exists(output_path):
-                storage_filename = f"{base_name}_{short_hash}_{counter}.{target_format}"
+                storage_filename = f"{base_name}_{short_hash}_{counter}.{output_format}"
                 output_path = os.path.join(DOWNLOAD_DIR, storage_filename)
                 counter += 1
         else:
             unique_id = str(uuid.uuid4())
-            display_name = f"converted.{target_format}"
-            storage_filename = f"{unique_id}.{target_format}"
+            display_name = f"converted.{output_format}"
+            storage_filename = f"{unique_id}.{output_format}"
             output_path = os.path.join(DOWNLOAD_DIR, storage_filename)
         
         # 调用具体转换器

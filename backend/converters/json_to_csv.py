@@ -1,7 +1,8 @@
 import json
 import csv
 from .base import BaseConverter
-from typing import Dict, Any, List
+from typing import Dict, Any
+from backend.utils.structured_data import flatten_json_values
 
 class JsonToCsvConverter(BaseConverter):
     """JSON 到 CSV 转换器"""
@@ -18,44 +19,17 @@ class JsonToCsvConverter(BaseConverter):
             with open(input_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # 确保数据是列表形式，如果不是，尝试转换
-            if isinstance(data, dict):
-                # 尝试查找列表字段
-                list_keys = [k for k, v in data.items() if isinstance(v, list)]
-                if len(list_keys) == 1:
-                    data = data[list_keys[0]]
-                else:
-                    # 单个对象转为单行 CSV
-                    data = [data]
-            
-            if not isinstance(data, list):
-                raise ValueError("JSON data must be a list of objects or a single object")
-            
-            if not data:
-                # 空列表，创建一个空文件
-                with open(output_path, 'w', encoding='utf-8', newline='') as f:
-                    pass
-                return {'success': True, 'output_path': output_path, 'size': 0}
-
-            # 获取所有可能的键（表头）
-            headers = set()
-            for item in data:
-                if isinstance(item, dict):
-                    headers.update(item.keys())
-            
-            fieldnames = sorted(list(headers))
-            
-            with open(output_path, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                for item in data:
-                    if isinstance(item, dict):
-                        writer.writerow(item)
+            rows = flatten_json_values(data)
+            with open(output_path, 'w', encoding='utf-8-sig', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['path', 'value'])
+                writer.writerows(rows)
             
             return {
                 'success': True,
                 'output_path': output_path,
-                'size': self.get_output_size(output_path)
+                'size': self.get_output_size(output_path),
+                'rows': len(rows)
             }
             
         except Exception as e:

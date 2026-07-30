@@ -26,7 +26,7 @@ JSON_STRUCTURAL_KEYS = {
 
 
 def normalize_text(value: Any) -> str:
-    return " ".join(str(value or "").split())
+    return " ".join(str(value if value is not None else "").split())
 
 
 def _deduplicate(values: Iterable[str]) -> List[str]:
@@ -82,7 +82,15 @@ def extract_json_texts(data: Any) -> List[str]:
             for item in value:
                 walk(item, key)
             return
-        if isinstance(value, str) and normalized_key not in JSON_STRUCTURAL_KEYS:
+        if normalized_key in JSON_STRUCTURAL_KEYS:
+            return
+        if value is None:
+            values.append("null")
+            return
+        if isinstance(value, bool):
+            values.append("true" if value else "false")
+            return
+        if isinstance(value, (str, int, float)):
             text = normalize_text(value)
             if text:
                 values.append(text)

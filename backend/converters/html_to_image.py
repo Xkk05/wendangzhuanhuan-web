@@ -21,6 +21,43 @@ class HtmlToImageConverter(BaseConverter):
         self.supported_formats = ['png', 'jpg', 'jpeg']
         self.pdf_converter = HtmlToPdfConverter()
         self.image_converter = PdfToImageConverter()
+
+    @staticmethod
+    def _is_visually_blank_page(page) -> bool:
+        import fitz
+
+        if page.get_text('text').strip() or page.get_images(full=True):
+            return False
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(0.2, 0.2), colorspace=fitz.csGRAY, alpha=False)
+        samples = pixmap.samples
+        if not samples:
+            return True
+        return max(samples) - min(samples) <= 3
+
+    def _trim_trailing_blank_pages(self, pdf_path: str) -> int:
+        import fitz
+
+        document = fitz.open(pdf_path)
+        original_count = len(document)
+        try:
+            keep_count = original_count
+            while keep_count > 1 and self._is_visually_blank_page(document[keep_count - 1]):
+                keep_count -= 1
+            if keep_count == len(document):
+                return 0
+
+            trimmed_path = pdf_path + '.trimmed.pdf'
+            trimmed = fitz.open()
+            try:
+                trimmed.insert_pdf(document, from_page=0, to_page=keep_count - 1)
+                trimmed.save(trimmed_path)
+            finally:
+                trimmed.close()
+        finally:
+            document.close()
+
+        os.replace(trimmed_path, pdf_path)
+        return original_count - keep_count
     
     def convert(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         """将 HTML 转换为图片"""
@@ -46,6 +83,8 @@ class HtmlToImageConverter(BaseConverter):
             
             if not pdf_result.get('success'):
                 raise Exception("HTML to PDF conversion failed")
+
+            self._trim_trailing_blank_pages(temp_pdf)
                 
             self.update_progress(input_path, 50)
             

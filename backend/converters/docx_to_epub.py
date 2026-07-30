@@ -5,6 +5,8 @@ import uuid
 from docx import Document
 from .base import BaseConverter
 from typing import Dict, Any
+from docx.table import Table
+from backend.utils.docx_content import docx_table_to_html, iter_docx_blocks
 
 
 class DocxToEpubConverter(BaseConverter):
@@ -24,22 +26,24 @@ class DocxToEpubConverter(BaseConverter):
             title = options.get('title', os.path.splitext(os.path.basename(input_path))[0])
             author = options.get('author', 'Unknown')
             
-            # 提取段落内容
             chapters = []
             current_chapter = {'title': 'Chapter 1', 'content': []}
-            
-            for para in doc.paragraphs:
-                text = para.text.strip()
+
+            for block in iter_docx_blocks(doc):
+                if isinstance(block, Table):
+                    table_html = docx_table_to_html(block)
+                    if table_html:
+                        current_chapter['content'].append(table_html)
+                    continue
+                text = block.text.strip()
                 if not text:
                     continue
-                
-                # 简单判断标题（根据样式或字体大小）
-                if para.style and 'Heading' in para.style.name:
+                if block.style and 'Heading' in block.style.name:
                     if current_chapter['content']:
                         chapters.append(current_chapter)
                     current_chapter = {'title': text, 'content': []}
                 else:
-                    current_chapter['content'].append(html.escape(text))
+                    current_chapter['content'].append(f'<p>{html.escape(text)}</p>')
             
             if current_chapter['content']:
                 chapters.append(current_chapter)
@@ -108,13 +112,13 @@ class DocxToEpubConverter(BaseConverter):
                 
                 # 章节文件
                 for i, chapter in enumerate(chapters):
-                    paragraphs = '\n'.join([f'<p>{p}</p>' for p in chapter['content']])
+                    paragraphs = '\n'.join(chapter['content'])
                     chapter_xhtml = f'''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <title>{html.escape(chapter["title"])}</title>
-  <style>body {{ font-family: serif; line-height: 1.6; padding: 1em; }}</style>
+  <style>body {{ font-family: serif; line-height: 1.6; padding: 1em; }} table {{ border-collapse: collapse; width: 100%; }} th, td {{ border: 1px solid #999; padding: .4em; text-align: left; }}</style>
 </head>
 <body>
   <h1>{html.escape(chapter["title"])}</h1>

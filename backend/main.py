@@ -1,6 +1,11 @@
 # backend/main.py
 import os
 import sys
+import mimetypes
+
+mimetypes.add_type("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx")
+mimetypes.add_type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx")
+mimetypes.add_type("application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx")
 
 # 加载 .env 文件以支持本地开发环境
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")

@@ -2,7 +2,7 @@ import os
 import tempfile
 from .base import BaseConverter
 from typing import Dict, Any
-from backend.utils.text_utils import detect_tts_language, read_text_file
+from backend.utils.text_utils import normalize_tts_language, read_text_file
 
 
 class TxtToSpeechConverter(BaseConverter):
@@ -37,7 +37,7 @@ class TxtToSpeechConverter(BaseConverter):
             rate = options.get('rate', 150)  # 语速
             volume = options.get('volume', 1.0)  # 音量 0-1
             pitch = options.get('pitch', 1.0)  # 音调 0.5-2.0
-            language = options.get('language') or detect_tts_language(text, default='zh-CN')  # 语言代码
+            language = normalize_tts_language(options.get('language'), text=text)
             gtts_error = 'skipped'
             
             print(f"[TTS Options] rate={rate}, volume={volume}, pitch={pitch}, language={language}")
@@ -74,27 +74,7 @@ class TxtToSpeechConverter(BaseConverter):
         except ImportError:
             raise Exception("gTTS not installed. Install with: pip install gtts")
         
-        # 语言映射
-        lang_map = {
-            'en': 'en',
-            '英语': 'en',
-            'zh': 'zh-CN',
-            '中文': 'zh-CN',
-            '中文 (普通话)': 'zh-CN',
-            'zh-CN': 'zh-CN',
-            'zh_CN': 'zh-CN',
-            'zh-cn': 'zh-CN',
-            'zh_Hans': 'zh-CN',
-            'zh-Hans': 'zh-CN',
-            'es': 'es',
-            '西班牙语': 'es',
-            'fr': 'fr',
-            '法语': 'fr',
-            'de': 'de',
-            '德语': 'de'
-        }
-        
-        lang_code = lang_map.get(language, 'en')
+        lang_code = normalize_tts_language(language, text=text)
         
         # 根据速度调整slow参数
         slow_speech = rate < 120  # 如果速度很慢，使用gTTS的slow模式

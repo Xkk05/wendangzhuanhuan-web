@@ -48,7 +48,10 @@ class TxtToImageConverter(BaseConverter):
             
             # 自动换行处理
             lines = []
-            for paragraph in text.split('\n'):
+            paragraphs = text.splitlines()
+            if text.endswith(('\n', '\r')):
+                paragraphs.append('')
+            for paragraph in paragraphs:
                 if not paragraph:
                     lines.append('')
                     continue

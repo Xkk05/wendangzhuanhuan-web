@@ -34,6 +34,31 @@ export const findToolByName = (name) => {
   return allTools.find(tool => tool.name === name);
 };
 
+const normalizeToolQuery = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/转换器|converter/g, '')
+  .replace(/\s*(?:→|->|转|to)\s*/g, ' to ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+export const findToolRouteByQuery = (query) => {
+  const normalizedQuery = normalizeToolQuery(query);
+  if (!normalizedQuery) return null;
+
+  const tools = getAllTools();
+  const exact = tools.find((tool) => normalizeToolQuery(tool.name) === normalizedQuery);
+  const queryTokens = normalizedQuery.split(' ').filter((token) => token !== 'to');
+  const matched = exact || tools.find((tool) => {
+    const normalizedName = normalizeToolQuery(tool.name);
+    return queryTokens.length > 0 && queryTokens.every((token) => normalizedName.includes(token));
+  });
+  if (!matched) return null;
+
+  const [source, target] = matched.name.split(/\s+To\s+/i);
+  return source && target ? `/tool/${source.toLowerCase()}/${target.toLowerCase()}` : null;
+};
+
 export const findSectionByToolName = (toolName) => {
   const sections = Object.values(categories).flat();
   for (const section of sections) {

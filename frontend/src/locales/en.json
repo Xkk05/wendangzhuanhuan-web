@@ -128,6 +128,7 @@
     "upload_main_text": "Drag and drop your {{source}} files or folders here",
     "upload_sub_text": "Batch upload supported",
     "select_files": "Select Files",
+    "select_upload_folder": "Select Folder",
     "drop_files": "Drag files here, or",
     "supported_formats": "Supported Formats",
     "start_conversion": "Start Conversion",
@@ -193,7 +194,18 @@
       "watermark_opacity": "Watermark Opacity",
       "watermark_position": "Watermark Position",
       "watermark_angle": "Watermark Angle",
-      "watermark_color": "Watermark Color"
+      "watermark_color": "Watermark Color",
+      "watermark_positions": {
+        "top-left": "Top left",
+        "top": "Top",
+        "top-right": "Top right",
+        "left": "Left",
+        "center": "Center",
+        "right": "Right",
+        "bottom-left": "Bottom left",
+        "bottom": "Bottom",
+        "bottom-right": "Bottom right"
+      }
     },
     "messages": {
       "select_preview_first": "Please select \"Enable Preview\" option first",

@@ -1,7 +1,9 @@
 import json
-from bs4 import BeautifulSoup
+from bs4 import Comment
 from .base import BaseConverter
 from typing import Dict, Any, List
+from backend.utils.html_content import prepare_content_soup
+from backend.utils.text_utils import read_text_file
 
 
 class HtmlToJsonConverter(BaseConverter):
@@ -29,7 +31,10 @@ class HtmlToJsonConverter(BaseConverter):
             result['attributes'] = dict(element.attrs)
         
         # 提取文本内容（仅直接文本，不包括子元素）
-        direct_text = ''.join([str(s) for s in element.contents if isinstance(s, str)]).strip()
+        direct_text = ''.join(
+            str(value) for value in element.contents
+            if isinstance(value, str) and not isinstance(value, Comment)
+        ).strip()
         if direct_text:
             result['text'] = direct_text
         
@@ -97,13 +102,12 @@ class HtmlToJsonConverter(BaseConverter):
             self.update_progress(input_path, 10)
             
             # 读取HTML文件
-            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
-                html_content = f.read()
+            html_content = read_text_file(input_path, options.get('encoding'))
             
             self.update_progress(input_path, 30)
             
             # 解析HTML
-            soup = BeautifulSoup(html_content, 'html.parser')
+            soup = prepare_content_soup(html_content, options)
             
             # 获取选项
             mode = options.get('mode', 'structured')  # 'structured' or 'metadata'

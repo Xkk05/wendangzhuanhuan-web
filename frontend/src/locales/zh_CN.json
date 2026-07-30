@@ -130,6 +130,7 @@
     "upload_main_text": "在这里拖放你的{{source}}文件或文件夹",
     "upload_sub_text": "支持批量上传",
     "select_files": "选择文件",
+    "select_upload_folder": "选择文件夹",
     "drop_files": "拖拽文件到此处，或",
     "supported_formats": "支持格式",
     "start_conversion": "开始转换",
@@ -195,7 +196,18 @@
       "watermark_opacity": "水印透明度",
       "watermark_position": "水印位置",
       "watermark_angle": "水印角度",
-      "watermark_color": "水印颜色"
+      "watermark_color": "水印颜色",
+      "watermark_positions": {
+        "top-left": "左上",
+        "top": "顶部",
+        "top-right": "右上",
+        "left": "左侧",
+        "center": "居中",
+        "right": "右侧",
+        "bottom-left": "左下",
+        "bottom": "底部",
+        "bottom-right": "右下"
+      }
     },
     "messages": {
       "select_preview_first": "请先勾选\"启用预览\"选项",

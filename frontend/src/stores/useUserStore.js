@@ -448,11 +448,10 @@ export const useUserStore = create(
         }
       },
 
-      requireFeatureAccess: ({ returnTo }) => {
+      requireFeatureAccess: () => {
         const state = get();
         if (!state.isLoggedIn || !state.token || state.token === '__guest_bypass_token__') {
-          state.showLoginModal(returnTo || DEFAULT_RETURN_TO);
-          return false;
+          return true;
         }
         return true;
       },

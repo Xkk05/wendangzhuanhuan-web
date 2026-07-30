@@ -1,7 +1,11 @@
-import shutil
-from bs4 import BeautifulSoup
+try:
+    from markdownify import markdownify
+except ImportError:
+    markdownify = None
 from .base import BaseConverter
 from typing import Dict, Any
+from backend.utils.html_content import prepare_content_soup
+from backend.utils.text_utils import read_text_file
 
 
 class HtmlToMarkdownConverter(BaseConverter):
@@ -16,6 +20,32 @@ class HtmlToMarkdownConverter(BaseConverter):
     def __init__(self):
         super().__init__()
         self.supported_formats = ['md', 'markdown']
+
+    def _fallback_markdown(self, soup) -> str:
+        lines = []
+        for element in (soup.body or soup).find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'table']):
+            if element.find_parent(['table', 'ul', 'ol']) and element.name != 'table':
+                continue
+            text = element.get_text(' ', strip=True)
+            if not text:
+                continue
+            if element.name.startswith('h'):
+                lines.append(f"{'#' * int(element.name[1])} {text}")
+            elif element.name == 'p':
+                lines.append(text)
+            elif element.name in {'ul', 'ol'}:
+                for index, item in enumerate(element.find_all('li', recursive=False), start=1):
+                    prefix = '-' if element.name == 'ul' else f'{index}.'
+                    lines.append(f"{prefix} {item.get_text(' ', strip=True)}")
+            elif element.name == 'table':
+                rows = [[cell.get_text(' ', strip=True) for cell in row.find_all(['th', 'td'])] for row in element.find_all('tr')]
+                if rows:
+                    width = max(len(row) for row in rows)
+                    rows = [row + [''] * (width - len(row)) for row in rows]
+                    lines.append('| ' + ' | '.join(rows[0]) + ' |')
+                    lines.append('| ' + ' | '.join(['---'] * width) + ' |')
+                    lines.extend('| ' + ' | '.join(row) + ' |' for row in rows[1:])
+        return '\n\n'.join(lines)
     
     def convert(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         """将 HTML 转换为 Markdown"""
@@ -26,8 +56,7 @@ class HtmlToMarkdownConverter(BaseConverter):
             # 获取选项
             mode = options.get('mode', 'text')  # 'source' or 'text'
             
-            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
-                html_content = f.read()
+            html_content = read_text_file(input_path, options.get('encoding'))
             
             self.update_progress(input_path, 30)
             
@@ -35,46 +64,12 @@ class HtmlToMarkdownConverter(BaseConverter):
                 # 源码模式：直接复制 HTML 源码
                 output_content = html_content
             else:
-                # 文本提取模式：简单的 HTML 到 Markdown 转换
-                soup = BeautifulSoup(html_content, 'html.parser')
-                
-                # 移除脚本和样式
-                for script in soup(['script', 'style']):
-                    script.decompose()
-                
+                soup = prepare_content_soup(html_content, options)
                 self.update_progress(input_path, 50)
-                
-                # 基础转换
-                md_lines = []
-                
-                # 标题
-                for i in range(1, 7):
-                    for heading in soup.find_all(f'h{i}'):
-                        text = heading.get_text(strip=True)
-                        if text:
-                            md_lines.append(f"{'#' * i} {text}\n")
-                        heading.decompose()
-                
-                # 段落
-                for para in soup.find_all('p'):
-                    text = para.get_text(strip=True)
-                    if text:
-                        md_lines.append(f"{text}\n")
-                
-                # 列表
-                for ul in soup.find_all('ul'):
-                    for li in ul.find_all('li'):
-                        text = li.get_text(strip=True)
-                        if text:
-                            md_lines.append(f"- {text}\n")
-                
-                # 如果没有提取到内容，使用纯文本
-                if not md_lines:
-                    text = soup.get_text(separator='\n', strip=True)
-                    output_content = text
+                if markdownify:
+                    output_content = markdownify(str(soup.body or soup), heading_style='ATX').strip() + '\n'
                 else:
-                    output_content = '\n'.join(md_lines)
-                
+                    output_content = self._fallback_markdown(soup).strip() + '\n'
                 self.update_progress(input_path, 80)
             
             # 写入文件

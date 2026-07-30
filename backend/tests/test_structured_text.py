@@ -1,3 +1,6 @@
+import csv
+import json
+
 from PIL import Image
 from openpyxl import Workbook, load_workbook
 
@@ -5,11 +8,15 @@ from backend.converters.excel_to_pdf import ExcelToPdfConverter
 from backend.converters.html_to_pdf import HtmlToPdfConverter
 from backend.converters.excel_to_html import ExcelToHtmlConverter
 from backend.converters.json_to_html import JsonToHtmlConverter
+from backend.converters.json_to_csv import JsonToCsvConverter
+from backend.converters.json_to_xlsx import JsonToXlsxConverter
 from backend.converters.json_to_svg import JsonToSvgConverter
 from backend.converters.pdf_to_image import PdfToImageConverter
 from backend.converters.xml_to_html import XmlToHtmlConverter
+from backend.converters.xml_to_csv import XmlToCsvConverter
 from backend.converters.xml_to_svg import XmlToSvgConverter
 from backend.converters.xml_to_txt import XmlToTxtConverter
+from backend.converters.xml_to_xlsx import XmlToXlsxConverter
 from backend.utils.structured_text import extract_json_texts, extract_xml_texts
 
 
@@ -21,10 +28,89 @@ def test_extract_xml_texts_returns_content_without_element_names():
     assert extract_xml_texts(root) == ['标题', '第一段', '第二段']
 
 
-def test_extract_json_texts_returns_string_values_only():
-    data = {'title': '标题', 'meta': {'node_type': 'paragraph', 'content': '正文'}, 'items': ['第一项']}
+def test_extract_json_texts_returns_all_content_scalars():
+    data = {
+        'title': '标题',
+        'meta': {'node_type': 'paragraph', 'content': '正文'},
+        'items': ['第一项', 42, True, False, None, 0],
+    }
 
-    assert extract_json_texts(data) == ['标题', '正文', '第一项']
+    assert extract_json_texts(data) == ['标题', '正文', '第一项', '42', 'true', 'false', 'null', '0']
+
+
+def test_xml_tabular_exports_preserve_paths_attributes_and_repeated_values(tmp_path):
+    source = tmp_path / 'sample.xml'
+    source.write_text(
+        '<document id="doc-7"><title>完整标题</title><para>第一段</para><para>第二段</para>'
+        '<items><item code="A"><name>项目甲</name><score>42</score></item>'
+        '<item code="B"><name>项目乙</name><score>0</score></item></items></document>',
+        encoding='utf-8',
+    )
+
+    csv_output = tmp_path / 'sample.csv'
+    xlsx_output = tmp_path / 'sample.xlsx'
+    assert XmlToCsvConverter().convert(str(source), str(csv_output))['success']
+    assert XmlToXlsxConverter().convert(str(source), str(xlsx_output))['success']
+
+    with csv_output.open(encoding='utf-8-sig', newline='') as handle:
+        csv_rows = list(csv.DictReader(handle))
+    csv_pairs = {(row['path'], row['value']) for row in csv_rows}
+
+    workbook = load_workbook(xlsx_output, data_only=True)
+    try:
+        worksheet = workbook.active
+        xlsx_pairs = {
+            (str(row[0]), str(row[1]))
+            for row in worksheet.iter_rows(min_row=2, values_only=True)
+        }
+    finally:
+        workbook.close()
+
+    expected_values = {'doc-7', '完整标题', '第一段', '第二段', 'A', '项目甲', '42', 'B', '项目乙', '0'}
+    assert expected_values <= {value for _, value in csv_pairs}
+    assert expected_values <= {value for _, value in xlsx_pairs}
+    assert any('@id' in path for path, _ in csv_pairs)
+    assert any('para[2]' in path for path, _ in csv_pairs)
+
+
+def test_json_tabular_exports_preserve_metadata_arrays_and_numeric_values(tmp_path):
+    source = tmp_path / 'sample.json'
+    source.write_text(
+        json.dumps({
+            'title': '完整标题',
+            'description': '元数据正文',
+            'count': 2,
+            'items': [
+                {'name': '项目甲', 'score': 42},
+                {'name': '项目乙', 'score': 0},
+            ],
+        }, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    csv_output = tmp_path / 'sample.csv'
+    xlsx_output = tmp_path / 'sample.xlsx'
+    assert JsonToCsvConverter().convert(str(source), str(csv_output))['success']
+    assert JsonToXlsxConverter().convert(str(source), str(xlsx_output))['success']
+
+    with csv_output.open(encoding='utf-8-sig', newline='') as handle:
+        csv_rows = list(csv.DictReader(handle))
+    csv_pairs = {(row['path'], row['value']) for row in csv_rows}
+
+    workbook = load_workbook(xlsx_output, data_only=True)
+    try:
+        worksheet = workbook.active
+        xlsx_pairs = {
+            (str(row[0]), str(row[1]))
+            for row in worksheet.iter_rows(min_row=2, values_only=True)
+        }
+    finally:
+        workbook.close()
+
+    expected_values = {'完整标题', '元数据正文', '2', '项目甲', '42', '项目乙', '0'}
+    assert expected_values <= {value for _, value in csv_pairs}
+    assert expected_values <= {value for _, value in xlsx_pairs}
+    assert ('items[2].score', '0') in csv_pairs
 
 
 def test_nearly_blank_page_is_ignored():

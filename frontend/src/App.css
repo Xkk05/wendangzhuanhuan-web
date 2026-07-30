@@ -1889,6 +1889,25 @@ body.web-mode .content-area {
   background: var(--primary-dark);
 }
 
+.upload-buttons-container {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.select-folder-btn {
+  background: #ffffff;
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  box-shadow: none;
+}
+
+.select-folder-btn:hover {
+  background: #eff6ff;
+  color: var(--primary-dark);
+}
+
 /* Param Config Styles */
 .param-config-container {
   background: var(--card-bg);
@@ -3243,6 +3262,12 @@ body.web-mode .content-area {
 }
 
 .option-group-header {
+  width: 100%;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: transparent;
+  text-align: left;
   padding: 12px 0;
   display: flex;
   justify-content: space-between;

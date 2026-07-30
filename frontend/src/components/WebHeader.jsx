@@ -6,6 +6,7 @@ import {
   persistCurrentToolSnapshot,
 } from '../utils/authStorage';
 import { useUserStore } from '../stores/useUserStore';
+import { findToolRouteByQuery } from '../utils/toolHelpers';
 import './WebShell.css';
 
 const SITE_ORIGIN = 'https://www.kunqiongai.com';
@@ -121,10 +122,9 @@ function WebHeader() {
   const submitSearch = (event) => {
     event.preventDefault();
     const keyword = searchQuery.trim();
-    const targetUrl = keyword
-      ? `${SITE_ORIGIN}/?s=${encodeURIComponent(keyword)}`
-      : `${SITE_ORIGIN}/`;
-    window.location.href = targetUrl;
+    const toolRoute = findToolRouteByQuery(keyword);
+    setShowMobileSearch(false);
+    navigate(toolRoute || '/');
   };
 
   const handleUserClick = () => {
