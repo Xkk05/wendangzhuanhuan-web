@@ -13,20 +13,49 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy with local runner
+    name: Deploy to Tencent CVM
     runs-on: ubuntu-22.04
 
     env:
-      DEFAULT_DEPLOY_DIR: /www/wwwroot/converter-app
+      DEPLOY_HOST: 43.154.197.96
+      DEPLOY_USER: root
+      DEPLOY_PORT: 22
+      DEPLOY_DIR: /www/wwwroot/converter-app
       COMPOSE_FILE: docker-compose.baota.yml
       DEPLOY_HEALTH_URL: http://43.154.197.96:3017/
+      PUBLIC_SITE_URL: http://43.154.197.96:3017
+      MEMBERSHIP_SUBSITE_NAME: http://43.154.197.96:3017/
+      MEMBERSHIP_PAY_PAGE: https://kunqiongai.com/web_member_pay.html
+      OAUTH_TOKEN_URL: https://login.kunqiongai.com/api/oauth/token
+      PROD_OAUTH_REDIRECT_URI: http://43.154.197.96:3017/oauth/callback
+      VITE_OAUTH_CALLBACK_URL: http://43.154.197.96:3017/oauth/callback
+      PROD_OAUTH_CLIENT_ID: ${{ secrets.PROD_OAUTH_CLIENT_ID }}
+      PROD_OAUTH_CLIENT_SECRET: ${{ secrets.PROD_OAUTH_CLIENT_SECRET }}
+      DESKTOP_LOGIN_SECRET_KEY: ${{ secrets.DESKTOP_LOGIN_SECRET_KEY }}
+      USER_CENTER_DB_HOST: ${{ secrets.USER_CENTER_DB_HOST }}
+      USER_CENTER_DB_PORT: ${{ secrets.USER_CENTER_DB_PORT }}
+      USER_CENTER_DB_USER: ${{ secrets.USER_CENTER_DB_USER }}
+      USER_CENTER_DB_NAME: ${{ secrets.USER_CENTER_DB_NAME }}
+      USER_CENTER_DB_PASSWORD: ${{ secrets.USER_CENTER_DB_PASSWORD }}
 
     steps:
-      - name: Fetch current revision
+      - name: Prepare SSH
+        run: |
+          set -eu
+          test -n "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}"
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Checkout repository on runner
         run: |
           set -eu
 
-          SRC_DIR="${RUNNER_TEMP:-/tmp}/converter-app-src"
+          SRC_DIR="$RUNNER_TEMP/converter-app-src"
           REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
           REF_NAME="${{ github.ref_name }}"
           SHA="${{ github.sha }}"
@@ -41,87 +70,80 @@ jobs:
           git checkout --force FETCH_HEAD
           git clean -fdx
 
-          echo "SRC_DIR=$SRC_DIR" >> "$GITHUB_ENV"
+          cat > .env <<EOF
+          PUBLIC_SITE_URL=${PUBLIC_SITE_URL}
+          MEMBERSHIP_SUBSITE_NAME=${MEMBERSHIP_SUBSITE_NAME}
+          PROD_OAUTH_CLIENT_ID=${PROD_OAUTH_CLIENT_ID}
+          PROD_OAUTH_CLIENT_SECRET=${PROD_OAUTH_CLIENT_SECRET}
+          MEMBERSHIP_PAY_PAGE=${MEMBERSHIP_PAY_PAGE}
+          OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL}
+          PROD_OAUTH_REDIRECT_URI=${PROD_OAUTH_REDIRECT_URI}
+          VITE_OAUTH_CALLBACK_URL=${VITE_OAUTH_CALLBACK_URL}
+          DESKTOP_LOGIN_SECRET_KEY=${DESKTOP_LOGIN_SECRET_KEY}
+          USER_CENTER_DB_HOST=${USER_CENTER_DB_HOST}
+          USER_CENTER_DB_PORT=${USER_CENTER_DB_PORT}
+          USER_CENTER_DB_USER=${USER_CENTER_DB_USER}
+          USER_CENTER_DB_NAME=${USER_CENTER_DB_NAME}
+          USER_CENTER_DB_PASSWORD=${USER_CENTER_DB_PASSWORD}
+          EOF
 
-      - name: Resolve deployment directory
+          tar --exclude='./.git' --exclude='./docker-data' -czf "$RUNNER_TEMP/converter-app.tar.gz" .
+
+      - name: Upload release to server
         run: |
           set -eu
 
-          DEPLOY_DIR="${DEPLOY_DIR:-}"
-          if [ -z "$DEPLOY_DIR" ]; then
-            for container in converter-frontend converter-backend; do
-              candidate="$(docker inspect "$container" --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true)"
-              if [ -n "$candidate" ] && [ -f "$candidate/$COMPOSE_FILE" ]; then
-                DEPLOY_DIR="$candidate"
-                break
-              fi
-            done
-          fi
+          scp -P "$DEPLOY_PORT" -i ~/.ssh/deploy_key "$RUNNER_TEMP/converter-app.tar.gz" \
+            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/converter-app.tar.gz"
 
-          if [ -z "$DEPLOY_DIR" ]; then
-            DEPLOY_DIR="$DEFAULT_DEPLOY_DIR"
-          fi
+      - name: Restart services on server
+        run: |
+          set -eu
+
+          ssh -p "$DEPLOY_PORT" -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$COMPOSE_FILE' bash -s" <<'REMOTE'
+          set -eu
 
           mkdir -p "$DEPLOY_DIR"
-          echo "Deploy directory: $DEPLOY_DIR"
-          echo "DEPLOY_DIR=$DEPLOY_DIR" >> "$GITHUB_ENV"
-
-      - name: Sync release files
-        run: |
-          set -eu
-
-          mkdir -p "$DEPLOY_DIR/docker-data/backend/uploads" \
-                   "$DEPLOY_DIR/docker-data/backend/downloads" \
-                   "$DEPLOY_DIR/docker-data/backend/logs"
-
-          if command -v rsync >/dev/null 2>&1; then
-            rsync -a --delete \
-              --exclude='.git' \
-              --exclude='docker-data' \
-              --exclude='.env' \
-              "$SRC_DIR"/ "$DEPLOY_DIR"/
-          else
-            tar -C "$SRC_DIR" \
-              --exclude='./.git' \
-              --exclude='./docker-data' \
-              --exclude='./.env' \
-              -cf - . | tar -C "$DEPLOY_DIR" -xf -
-          fi
-
-          chmod -R u+rwX,g+rwX "$DEPLOY_DIR/docker-data/backend" || true
-
-      - name: Build and restart services
-        run: |
-          set -eu
-
           cd "$DEPLOY_DIR"
+
+          find . -mindepth 1 -maxdepth 1 ! -name docker-data -exec rm -rf {} +
+          tar -xzf /tmp/converter-app.tar.gz -C "$DEPLOY_DIR"
+          rm -f /tmp/converter-app.tar.gz
+
+          mkdir -p docker-data/backend/uploads docker-data/backend/downloads docker-data/backend/logs
+          chmod -R u+rwX,g+rwX docker-data/backend
 
           if docker compose version >/dev/null 2>&1; then
             COMPOSE_CMD="docker compose"
           elif command -v docker-compose >/dev/null 2>&1; then
             COMPOSE_CMD="docker-compose"
           else
-            echo "Docker Compose is not installed on this runner."
+            echo "Docker Compose is not installed on target server."
             exit 1
           fi
+
+          echo "Target server listeners on port 3017:"
+          ss -lntp 2>/dev/null | grep ':3017' || true
+          echo "Target server containers publishing port 3017:"
+          docker ps --filter publish=3017 --format 'table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}' || true
 
           $COMPOSE_CMD -f "$COMPOSE_FILE" config
           $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build --force-recreate backend frontend
           $COMPOSE_CMD -f "$COMPOSE_FILE" ps
+          REMOTE
 
       - name: Health check
         run: |
           set -eu
 
           echo "Checking $DEPLOY_HEALTH_URL"
-          for i in $(seq 1 36); do
+          for i in $(seq 1 30); do
             if curl -fsS "$DEPLOY_HEALTH_URL" >/dev/null; then
               echo "Deployment is healthy."
-              curl -fsS "$DEPLOY_HEALTH_URL" | grep -o "/assets/index-[^\"']*\.js" | head -n 1 || true
               exit 0
             fi
-
-            echo "Waiting for service... ($i/36)"
+            echo "Waiting for service... ($i/30)"
             sleep 5
           done
 
