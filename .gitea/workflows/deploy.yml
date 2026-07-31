@@ -129,7 +129,8 @@ jobs:
           docker ps --filter publish=3017 --format 'table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}' || true
 
           $COMPOSE_CMD -f "$COMPOSE_FILE" config
-          $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build --force-recreate backend frontend
+          $COMPOSE_CMD -f "$COMPOSE_FILE" build --no-cache backend frontend
+          $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --force-recreate backend frontend
           $COMPOSE_CMD -f "$COMPOSE_FILE" ps
           REMOTE
 
