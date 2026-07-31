@@ -23,7 +23,11 @@ class JsonToSvgConverter(BaseConverter):
             
             self.update_progress(input_path, 30)
             
-            svg_content = build_text_svg('JSON Content', extract_json_texts(json_data))
+            svg_content = build_text_svg(
+                'JSON Content',
+                extract_json_texts(json_data),
+                background_color=options.get('background_color', '#ffffff'),
+            )
             
             # 写入SVG文件
             with open(output_path, 'w', encoding='utf-8') as f:

@@ -1,7 +1,8 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 import json
 from .base import BaseConverter
-from backend.utils.structured_data import append_path_value_rows, flatten_json_values
+from backend.utils.structured_text import extract_json_texts
+from backend.utils.text_utils import read_text_file
 try:
     from openpyxl import Workbook
 except ImportError:
@@ -21,16 +22,17 @@ class JsonToXlsxConverter(BaseConverter):
         self.update_progress(input_path, 10)
         
         try:
-            with open(input_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            data = json.loads(read_text_file(input_path, options.get('encoding')))
             
             self.update_progress(input_path, 30)
             wb = Workbook()
             ws = wb.active
-            ws.title = 'Data'
-            row_count = append_path_value_rows(ws, flatten_json_values(data))
-            ws.column_dimensions['A'].width = 48
-            ws.column_dimensions['B'].width = 36
+            ws.title = 'Content'
+            ws.append(['内容'])
+            for value in extract_json_texts(data):
+                ws.append([value])
+            row_count = ws.max_row
+            ws.column_dimensions['A'].width = 64
             self.update_progress(input_path, 90)
             
             wb.save(output_path)

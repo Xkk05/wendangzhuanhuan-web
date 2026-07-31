@@ -3,6 +3,7 @@ from pathlib import Path
 
 import fitz
 from docx import Document
+from docx.shared import Inches as DocxInches
 from openpyxl import Workbook
 from PIL import Image, ImageChops, ImageStat
 from pptx import Presentation
@@ -372,6 +373,33 @@ def test_office_exports_preserve_tables_and_wide_sheet_values(tmp_path):
     assert 'R1C12' in excel_ppt_text
     assert 'R21C1' in excel_ppt_text
     assert 'R21C12' in excel_ppt_text
+
+
+def test_docx_powerpoint_keeps_images_and_watermark(tmp_path):
+    docx_source = tmp_path / 'image.docx'
+    image_source = tmp_path / 'inline.png'
+    Image.new('RGB', (220, 120), (60, 120, 180)).save(image_source)
+
+    document = Document()
+    document.add_heading('图文演示', level=1)
+    document.add_paragraph('这是一段需要保留的正文。')
+    document.add_picture(str(image_source), width=DocxInches(1.6))
+    document.save(docx_source)
+
+    ppt_output = tmp_path / 'image.pptx'
+    assert DocxToPptConverter().convert(
+        str(docx_source),
+        str(ppt_output),
+        watermark_text='内部水印',
+        watermark_angle=0,
+    )['success']
+
+    ppt_text = _presentation_text(ppt_output)
+    assert '图文演示' in ppt_text
+    assert '这是一段需要保留的正文' in ppt_text
+    assert '内部水印' in ppt_text
+    with zipfile.ZipFile(ppt_output) as archive:
+        assert any(name.startswith('ppt/media/image') for name in archive.namelist())
 
 
 def test_html_text_exports_preserve_tables_and_exclude_hidden_content(tmp_path):

@@ -16,7 +16,7 @@ class ExcelToPptConverter(BaseConverter):
         self.update_progress(input_path, 5)
         
         presentation = Presentation()
-        presentation.slide_width = Inches(10)
+        presentation.slide_width = Inches(13.333)
         presentation.slide_height = Inches(7.5)
         with read_spreadsheet_rows(input_path) as sheets:
             for sheet_name, sheet_rows in sheets:

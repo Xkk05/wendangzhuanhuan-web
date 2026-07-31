@@ -57,6 +57,7 @@ function ToolDetailContent({ toolName, onBack }) {
   const navigate = useNavigate();
   const location = useLocation();
   const requireFeatureAccess = useUserStore((state) => state.requireFeatureAccess);
+  const showLoginModal = useUserStore((state) => state.showLoginModal);
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
   const [files, setFiles] = useState([]);
@@ -104,7 +105,7 @@ function ToolDetailContent({ toolName, onBack }) {
     backgroundColor: '#ffffff',
     csvDelimiter: t('toolDetail.options.comma'),
     yamlIndent: 2,
-    orientation: t('toolDetail.options.landscape'),
+    orientation: t('toolDetail.options.portrait'),
     pdfPageSelection: t('toolDetail.options.all_pages'),
     animationDelay: 100,
     loopAnimation: true,
@@ -966,6 +967,14 @@ function ToolDetailContent({ toolName, onBack }) {
                 options.watermark_angle = watermarkOptions.angle;
                 options.watermark_position = watermarkOptions.position;
               }
+              if (target === 'PPT') {
+                options.watermark_text = watermarkOptions.text;
+                options.watermark_opacity = watermarkOptions.opacity;
+                options.watermark_size = watermarkOptions.size;
+                options.watermark_color = watermarkOptions.color;
+                options.watermark_angle = watermarkOptions.angle;
+                options.watermark_position = watermarkOptions.position;
+              }
             }
             
             if (source === 'HTML') {
@@ -1149,6 +1158,10 @@ function ToolDetailContent({ toolName, onBack }) {
         } catch (err) {
           if (err.name === 'AbortError' || err.message === t('toolDetail.messages.operation_cancelled')) {
              throw err; // Re-throw cancellation to stop outer loop
+          }
+          if (err.status === 401 || err.code === 'login_required') {
+            showLoginModal(location.pathname + location.search + location.hash);
+            throw err;
           }
           console.error(`Error converting file ${file.name}:`, err);
           setConversionResults(prev => ({ ...prev, [fileObj.id]: { error: err.message } }));

@@ -4,9 +4,10 @@ import shutil
 import html
 import logging
 from docx import Document
+from docx.enum.section import WD_ORIENT
 from .base import BaseConverter
 from .html_to_pdf import HtmlToPdfConverter
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple
 from backend.utils.logger import setup_logger
 
 class DocxToPdfConverter(BaseConverter):
@@ -53,8 +54,51 @@ class DocxToPdfConverter(BaseConverter):
                 pythoncom.CoUninitialize()
         except:
             return False
+
+    def _is_landscape_orientation(self, orientation: str) -> bool:
+        return str(orientation or '').strip().lower() in {'landscape', '横向', '橫向'}
+
+    def _apply_word_page_orientation(self, doc, orientation: str) -> None:
+        if self._is_landscape_orientation(orientation):
+            return
+        try:
+            for section in doc.Sections:
+                page_setup = section.PageSetup
+                page_setup.Orientation = 0  # wdOrientPortrait
+                if page_setup.PageWidth > page_setup.PageHeight:
+                    width = page_setup.PageWidth
+                    page_setup.PageWidth = page_setup.PageHeight
+                    page_setup.PageHeight = width
+        except Exception as exc:
+            self.logger.warning(f"[DocxToPdf] 页面方向归一失败，继续转换: {exc}")
+
+    def _prepare_docx_orientation_for_libreoffice(self, input_path: str, output_path: str, orientation: str) -> Tuple[str, Optional[str]]:
+        if self._is_landscape_orientation(orientation):
+            return input_path, None
+
+        try:
+            document = Document(input_path)
+            changed = False
+            for section in document.sections:
+                if section.orientation != WD_ORIENT.PORTRAIT:
+                    section.orientation = WD_ORIENT.PORTRAIT
+                    changed = True
+                if section.page_width > section.page_height:
+                    section.page_width, section.page_height = section.page_height, section.page_width
+                    changed = True
+            if not changed:
+                return input_path, None
+
+            base_dir = os.path.dirname(output_path) or os.getcwd()
+            base_name = os.path.splitext(os.path.basename(output_path))[0]
+            normalized_path = os.path.join(base_dir, base_name + "_portrait_input.docx")
+            document.save(normalized_path)
+            return normalized_path, normalized_path
+        except Exception as exc:
+            self.logger.warning(f"[DocxToPdf] LibreOffice 纵向预处理失败，使用原文件继续: {exc}")
+            return input_path, None
     
-    def _convert_with_word(self, input_path: str, output_path: str) -> Dict[str, Any]:
+    def _convert_with_word(self, input_path: str, output_path: str, orientation: str = 'portrait') -> Dict[str, Any]:
         """使用 Microsoft Word 转换 (优化版)"""
         import win32com.client
         import pythoncom
@@ -81,6 +125,7 @@ class DocxToPdfConverter(BaseConverter):
             
             # 打开文档
             doc = word.Documents.Open(input_path, ReadOnly=True)
+            self._apply_word_page_orientation(doc, orientation)
             
             # 保存为 PDF
             # wdFormatPDF = 17
@@ -117,24 +162,31 @@ class DocxToPdfConverter(BaseConverter):
             except:
                 pass
     
-    def _convert_with_libreoffice(self, input_path: str, output_path: str) -> Dict[str, Any]:
+    def _convert_with_libreoffice(self, input_path: str, output_path: str, orientation: str = 'portrait') -> Dict[str, Any]:
         """使用 LibreOffice 转换"""
+        input_path, cleanup_path = self._prepare_docx_orientation_for_libreoffice(input_path, output_path, orientation)
         output_dir = os.path.dirname(output_path) or os.getcwd()
         cmd = [self.soffice_path, '--headless', '--convert-to', 'pdf', '--outdir', output_dir, input_path]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-        if result.returncode != 0:
-            raise Exception(f"LibreOffice 转换失败: {result.stderr}")
-        
-        # 重命名输出文件
-        input_basename = os.path.splitext(os.path.basename(input_path))[0]
-        generated_pdf = os.path.join(output_dir, input_basename + '.pdf')
-        if generated_pdf != output_path and os.path.exists(generated_pdf):
-            if os.path.exists(output_path):
-                os.remove(output_path)
-            os.rename(generated_pdf, output_path)
-        
-        return {'method': 'libreoffice'}
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                raise Exception(f"LibreOffice 转换失败: {result.stderr}")
+
+            # 重命名输出文件
+            input_basename = os.path.splitext(os.path.basename(input_path))[0]
+            generated_pdf = os.path.join(output_dir, input_basename + '.pdf')
+            if generated_pdf != output_path and os.path.exists(generated_pdf):
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+                os.rename(generated_pdf, output_path)
+
+            return {'method': 'libreoffice'}
+        finally:
+            if cleanup_path and os.path.exists(cleanup_path):
+                try:
+                    os.remove(cleanup_path)
+                except Exception:
+                    pass
     
     def _convert_with_html(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         """使用 HTML 中转方式转换（兜底方案 - 增强版，支持图片）"""
@@ -282,10 +334,15 @@ class DocxToPdfConverter(BaseConverter):
             result = {}
             errors = []
 
-            has_page_options = any(
-                key in options and options.get(key)
-                for key in ['page_size', 'orientation', 'page_range', 'watermark_text']
+            orientation = options.get('orientation') or 'portrait'
+            page_size = str(options.get('page_size') or '').strip()
+            has_page_options = bool(
+                options.get('page_range')
+                or options.get('watermark_text')
+                or self._is_landscape_orientation(orientation)
+                or (page_size and page_size != 'A4')
             )
+            options.setdefault('orientation', 'portrait')
 
             if has_page_options:
                 self.logger.info("[DocxToPdf] Detected page/watermark options, using HTML fallback")
@@ -305,7 +362,7 @@ class DocxToPdfConverter(BaseConverter):
                 try:
                     self.logger.info("[DocxToPdf] Trying Microsoft Word conversion...")
                     self.update_progress(input_path, 10)
-                    result = self._convert_with_word(input_path, output_path)
+                    result = self._convert_with_word(input_path, output_path, orientation=orientation)
                     self.update_progress(input_path, 100)
                     
                     self.logger.info("[DocxToPdf] [OK] Word conversion successful")
@@ -329,7 +386,7 @@ class DocxToPdfConverter(BaseConverter):
                 try:
                     self.logger.info("[DocxToPdf] Trying LibreOffice conversion...")
                     self.update_progress(input_path, 30)
-                    result = self._convert_with_libreoffice(input_path, output_path)
+                    result = self._convert_with_libreoffice(input_path, output_path, orientation=orientation)
                     self.update_progress(input_path, 100)
                     
                     self.logger.info("[DocxToPdf] [OK] LibreOffice conversion successful")

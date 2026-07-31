@@ -448,10 +448,18 @@ export const useUserStore = create(
         }
       },
 
-      requireFeatureAccess: () => {
+      requireFeatureAccess: (options = {}) => {
         const state = get();
         if (!state.isLoggedIn || !state.token || state.token === '__guest_bypass_token__') {
-          return true;
+          const returnTo = getSafeReturnTo(options.returnTo || state.pendingReturnTo || DEFAULT_RETURN_TO);
+          set({
+            isLoginModalVisible: true,
+            pendingReturnTo: returnTo,
+          });
+          if (options.t) {
+            toast.error(options.t('userCenter.login_required_action'));
+          }
+          return false;
         }
         return true;
       },

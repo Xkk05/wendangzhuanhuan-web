@@ -17,7 +17,11 @@ class JsonToHtmlConverter(BaseConverter):
             self.validate_input(input_path)
             
             data = json.loads(read_text_file(input_path, options.get('encoding')))
-            html_content = build_text_html('JSON Content', extract_json_texts(data))
+            html_content = build_text_html(
+                'JSON Content',
+                extract_json_texts(data),
+                background_color=options.get('background_color', '#ffffff'),
+            )
             
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)

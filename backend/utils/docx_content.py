@@ -31,3 +31,23 @@ def docx_table_to_html(table: Table) -> str:
         cells = "".join(f"<{cell_tag}>{html.escape(value)}</{cell_tag}>" for value in row)
         body.append(f"<tr>{cells}</tr>")
     return f"<table>{''.join(body)}</table>"
+
+
+def docx_paragraph_images(paragraph: Paragraph) -> list[dict[str, object]]:
+    images = []
+    seen_relationships = set()
+    for blip in paragraph._element.findall(
+        './/{http://schemas.openxmlformats.org/drawingml/2006/main}blip'
+    ):
+        relationship_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+        if not relationship_id or relationship_id in seen_relationships:
+            continue
+        seen_relationships.add(relationship_id)
+        image_part = paragraph.part.related_parts.get(relationship_id)
+        if not image_part:
+            continue
+        images.append({
+            'blob': image_part.blob,
+            'content_type': getattr(image_part, 'content_type', ''),
+        })
+    return images

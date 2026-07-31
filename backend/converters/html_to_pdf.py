@@ -13,6 +13,7 @@ from pathlib import Path
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from backend.utils.font_utils import register_reportlab_cjk_font
+from backend.utils.structured_text import normalize_hex_color
 from backend.utils.text_utils import read_text_file
 
 # Configure logging
@@ -103,6 +104,17 @@ class HtmlToPdfConverter(BaseConverter):
                 f'{"landscape" if is_landscape else "portrait"}; margin: 10mm; }}'
             )
             (soup.head or soup).append(page_style)
+
+        background_color = normalize_hex_color(options.get('background_color'), '')
+        if background_color:
+            background_style = soup.new_tag('style')
+            background_style.string = (
+                '* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } '
+                f'@page {{ background: {background_color}; }} '
+                f'html, body {{ background: {background_color} !important; min-height: 100%; }} '
+                f'body::before {{ content: ""; position: fixed; inset: 0; background: {background_color}; z-index: -1; }}'
+            )
+            (soup.head or soup).append(background_style)
 
         if soup.head:
             charset_meta = soup.head.find('meta', attrs={'charset': True})
@@ -196,6 +208,10 @@ class HtmlToPdfConverter(BaseConverter):
             if not os.path.exists(output_path):
                  # Check if browser outputted to a default location? Unlikely with --print-to-pdf=PATH
                  raise Exception(f"Browser executed but output file was not created. Stderr: {result.stderr}")
+
+            page_range = options.get('page_range')
+            if page_range:
+                self._apply_page_range(output_path, str(page_range))
 
             self.update_progress(input_path, 100)
             

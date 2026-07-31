@@ -44,7 +44,11 @@ class XmlToSvgConverter(BaseConverter):
                 
                 method = 'svg-xml-copy'
             else:
-                svg_content = build_text_svg('XML Content', extract_xml_texts(root))
+                svg_content = build_text_svg(
+                    'XML Content',
+                    extract_xml_texts(root),
+                    background_color=options.get('background_color', '#ffffff'),
+                )
                 
                 with open(output_path, 'w', encoding='utf-8') as f:
                     f.write(svg_content)

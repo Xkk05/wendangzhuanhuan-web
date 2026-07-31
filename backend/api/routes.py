@@ -539,19 +539,24 @@ def _merge_profile_with_membership(local_token: str, membership: Optional[dict] 
 
 
 def _assert_processing_access(local_token: str, origin: str = "http://localhost:5176") -> dict:
-    # 跳过登录：所有访客均拥有无限访问权限
-    return {
-        "is_vip": True,
-        "vip_level": 1,
-        "access_state": "member_active",
-        "remaining_daily_count": 999999,
-        "remaining_days": 999,
-        "allow_batch": True,
-        "trial_active": False,
-        "payment_url": "",
-        "payment_auth_expired": False,
-        "access_code": "",
-    }
+    if not local_token or local_token == GUEST_TOKEN:
+        raise HTTPException(status_code=401, detail={
+            "success": False,
+            "code": "login_required",
+            "message": "请登录后再转换或下载文件",
+        })
+
+    profile = _merge_profile_with_membership(local_token)
+    if profile.get("access_state") == "upgrade_required" or int(profile.get("remaining_daily_count") or 0) <= 0:
+        raise HTTPException(status_code=403, detail={
+            "success": False,
+            "code": "membership_required",
+            "message": "今日免费次数已用完，请开通会员后继续使用",
+            "access_state": profile.get("access_state"),
+            "requires_upgrade": True,
+            "payment_url": user_center_service.build_payment_url(local_token, f"{origin.rstrip('/')}/account?returnTo=%2F"),
+        })
+    return profile
 
 
 def _build_oauth_state() -> str:
@@ -1268,6 +1273,7 @@ async def convert_general(
     remove_empty_tags: Optional[bool] = Form(False),
     page_size: Optional[str] = Form(None),
     orientation: Optional[str] = Form(None),
+    page_range: Optional[str] = Form(None),
     excel_orientation: Optional[str] = Form('auto'),
     excel_scale_mode: Optional[str] = Form('auto'),
     # 图片选项
@@ -1343,6 +1349,7 @@ async def convert_general(
             'remove_empty_tags': remove_empty_tags,
             'page_size': page_size,
             'orientation': orientation,
+            'page_range': page_range,
             'excel_orientation': excel_orientation,
             'excel_scale_mode': excel_scale_mode,
             'quality': quality,
@@ -1631,6 +1638,9 @@ async def batch_download(request: Request, files: List[str] = Form(...)):
     import io
     import zipfile
     from fastapi.responses import StreamingResponse
+
+    api_web_token = _extract_api_web_token(request)
+    _assert_processing_access(api_web_token, request.headers.get("origin", "http://localhost:5176"))
 
     if not files:
         raise HTTPException(status_code=400, detail="No files specified")

@@ -31,7 +31,12 @@ class XmlToImageConverter(BaseConverter):
             self.update_progress(input_path, 50)
             
             # 第二步：HTML -> 图片
-            result = self.html_to_image.convert(temp_html_path, output_path, **options)
+            image_options = dict(options)
+            background_color = str(image_options.get('background_color') or '#ffffff').strip().lower()
+            if background_color and background_color != '#ffffff':
+                image_options.setdefault('auto_crop', False)
+                image_options.setdefault('replace_white_background', True)
+            result = self.html_to_image.convert(temp_html_path, output_path, **image_options)
             self.update_progress(input_path, 100)
             
             result['method'] = 'xml->html->image'

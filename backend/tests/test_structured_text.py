@@ -1,16 +1,23 @@
+import base64
 import csv
 import json
 
+import pytest
+from fastapi import HTTPException
 from PIL import Image
 from openpyxl import Workbook, load_workbook
 
+from backend.api.routes import GUEST_TOKEN, _assert_processing_access
 from backend.converters.excel_to_pdf import ExcelToPdfConverter
 from backend.converters.html_to_pdf import HtmlToPdfConverter
 from backend.converters.excel_to_html import ExcelToHtmlConverter
+from backend.converters.json_to_base64 import JsonToBase64Converter
 from backend.converters.json_to_html import JsonToHtmlConverter
 from backend.converters.json_to_csv import JsonToCsvConverter
+from backend.converters.json_to_xml import JsonToXmlConverter
 from backend.converters.json_to_xlsx import JsonToXlsxConverter
 from backend.converters.json_to_svg import JsonToSvgConverter
+from backend.converters.json_to_yaml import JsonToYamlConverter
 from backend.converters.pdf_to_image import PdfToImageConverter
 from backend.converters.xml_to_html import XmlToHtmlConverter
 from backend.converters.xml_to_csv import XmlToCsvConverter
@@ -36,6 +43,14 @@ def test_extract_json_texts_returns_all_content_scalars():
     }
 
     assert extract_json_texts(data) == ['标题', '正文', '第一项', '42', 'true', 'false', 'null', '0']
+
+
+def test_guest_processing_access_requires_login():
+    with pytest.raises(HTTPException) as exc_info:
+        _assert_processing_access(GUEST_TOKEN)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail['code'] == 'login_required'
 
 
 def test_xml_tabular_exports_preserve_paths_attributes_and_repeated_values(tmp_path):
@@ -100,16 +115,17 @@ def test_json_tabular_exports_preserve_metadata_arrays_and_numeric_values(tmp_pa
     workbook = load_workbook(xlsx_output, data_only=True)
     try:
         worksheet = workbook.active
-        xlsx_pairs = {
-            (str(row[0]), str(row[1]))
+        xlsx_values = {
+            str(row[0])
             for row in worksheet.iter_rows(min_row=2, values_only=True)
+            if row and row[0] is not None
         }
     finally:
         workbook.close()
 
     expected_values = {'完整标题', '元数据正文', '2', '项目甲', '42', '项目乙', '0'}
     assert expected_values <= {value for _, value in csv_pairs}
-    assert expected_values <= {value for _, value in xlsx_pairs}
+    assert expected_values <= xlsx_values
     assert ('items[2].score', '0') in csv_pairs
 
 
@@ -208,6 +224,46 @@ def test_json_display_exports_keep_text_and_remove_json_syntax(tmp_path):
         assert '&quot;content&quot;' not in content
 
 
+def test_json_content_exports_to_yaml_xml_base64_and_xlsx_without_source_code(tmp_path):
+    source = tmp_path / 'sample.json'
+    source.write_text(
+        json.dumps({
+            'metadata': {'node_type': 'paragraph', 'tag': 'source-tag'},
+            'title': '转换标题',
+            'children': [{'content': '正文内容'}, {'content': '第二段'}],
+        }, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    yaml_output = tmp_path / 'sample.yaml'
+    xml_output = tmp_path / 'sample.xml'
+    base64_output = tmp_path / 'sample.base64'
+    xlsx_output = tmp_path / 'sample.xlsx'
+
+    assert JsonToYamlConverter().convert(str(source), str(yaml_output))['success']
+    assert JsonToXmlConverter().convert(str(source), str(xml_output))['success']
+    assert JsonToBase64Converter().convert(str(source), str(base64_output))['success']
+    assert JsonToXlsxConverter().convert(str(source), str(xlsx_output))['success']
+
+    yaml_text = yaml_output.read_text(encoding='utf-8')
+    xml_text = xml_output.read_text(encoding='utf-8')
+    decoded_text = base64.b64decode(base64_output.read_text(encoding='utf-8')).decode('utf-8')
+    workbook = load_workbook(xlsx_output, data_only=True)
+    try:
+        xlsx_values = [row[0] for row in workbook.active.iter_rows(min_row=2, values_only=True)]
+    finally:
+        workbook.close()
+
+    for content in (yaml_text, xml_text, decoded_text, '\n'.join(map(str, xlsx_values))):
+        assert '转换标题' in content
+        assert '正文内容' in content
+        assert '第二段' in content
+        assert 'node_type' not in content
+        assert 'metadata' not in content
+        assert 'children' not in content
+        assert 'source-tag' not in content
+
+
 def test_html_print_blank_tail_page_is_not_exported(tmp_path):
     source = tmp_path / 'sample.html'
     pdf_output = tmp_path / 'sample.pdf'
@@ -232,6 +288,23 @@ def test_html_page_options_are_added_to_browser_print_css():
     )
 
     assert '@page { size: A3 landscape; margin: 10mm; }' in html
+
+
+def test_text_html_and_browser_print_keep_configured_background(tmp_path):
+    source = tmp_path / 'sample.xml'
+    output = tmp_path / 'sample.html'
+    source.write_text('<document><para>正文</para></document>', encoding='utf-8')
+    assert XmlToHtmlConverter().convert(str(source), str(output), background_color='#ddeeff')['success']
+    xml_html = output.read_text(encoding='utf-8')
+    html = HtmlToPdfConverter()._prepare_html_content(
+        '<html><head></head><body>正文</body></html>',
+        {'background_color': '#ddeeff'},
+    )
+
+    assert '#ddeeff' in xml_html
+    assert 'print-color-adjust: exact' in xml_html
+    assert '#ddeeff' in html
+    assert 'print-color-adjust: exact' in html
 
 
 def test_excel_html_fit_width_uses_wrapped_full_width_table(tmp_path):

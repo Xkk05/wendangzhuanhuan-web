@@ -42,6 +42,7 @@ class PdfToImageConverter(BaseConverter):
             merge = options.get('merge', True)  # 默认合并为长图
             background_color = options.get('background_color', '#ffffff')
             auto_crop = options.get('auto_crop', True)  # 默认自动裁剪空白
+            replace_white_background = options.get('replace_white_background', False)
             
             # 水印选项
             watermark_text = options.get('watermark_text', '')
@@ -99,7 +100,7 @@ class PdfToImageConverter(BaseConverter):
                     img = Image.frombytes("RGBA", [pix.width, pix.height], pix.samples)
                     if i == 0: # 只打印一次
                         print(f"[PdfToImage] 应用背景颜色: {background_color}")
-                    img = self._apply_background_color(img, background_color)
+                    img = self._apply_background_color(img, background_color, replace_white_background)
                 else:
                     pix = page.get_pixmap(matrix=mat, alpha=False)
                     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
@@ -155,7 +156,7 @@ class PdfToImageConverter(BaseConverter):
                 # 合并为长图
                 print(f"[PdfToImage] 合并 {processed_count} 页为长图")
                 final_output = self._merge_to_long_image(
-                    images, output_path, target_ext, quality
+                    images, output_path, target_ext, quality, background_color
                 )
                 self.update_progress(input_path, 100)
                 
@@ -257,7 +258,7 @@ class PdfToImageConverter(BaseConverter):
             print(f"[PdfToImage] 裁剪失败: {e}")
             return img
 
-    def _apply_background_color(self, img: Image.Image, color: str) -> Image.Image:
+    def _apply_background_color(self, img: Image.Image, color: str, replace_white: bool = False) -> Image.Image:
         try:
             if color.startswith('#'):
                 color = color[1:]
@@ -276,6 +277,13 @@ class PdfToImageConverter(BaseConverter):
             background = Image.new('RGB', img.size, (r_bg, g_bg, b_bg))
             alpha = img.split()[3]
             background.paste(img, mask=alpha)
+
+            if replace_white:
+                white = Image.new('RGB', background.size, (255, 255, 255))
+                diff = ImageChops.difference(background, white).convert('L')
+                white_mask = diff.point(lambda value: 255 if value < 8 else 0)
+                solid = Image.new('RGB', background.size, (r_bg, g_bg, b_bg))
+                background.paste(solid, mask=white_mask)
 
             return background
         except Exception as e:
@@ -361,13 +369,18 @@ class PdfToImageConverter(BaseConverter):
             return img
     
     def _merge_to_long_image(self, images: List[Image.Image], output_path: str, 
-                            target_ext: str, quality: int) -> str:
+                            target_ext: str, quality: int, background_color: str = '#ffffff') -> str:
         """合并为长图"""
         # 垂直拼接
         total_width = max(img.width for img in images)
         total_height = sum(img.height for img in images)
         
-        merged = Image.new('RGB', (total_width, total_height), (255, 255, 255))
+        try:
+            color = str(background_color or '#ffffff').lstrip('#')
+            fill = (int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16))
+        except Exception:
+            fill = (255, 255, 255)
+        merged = Image.new('RGB', (total_width, total_height), fill)
         
         y_offset = 0
         for img in images:

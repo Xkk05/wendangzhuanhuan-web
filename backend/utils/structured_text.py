@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import re
 import unicodedata
 from typing import Any, Iterable, List
 
@@ -23,6 +24,8 @@ JSON_STRUCTURAL_KEYS = {
     "node_type",
     "nodetype",
 }
+
+DEFAULT_BACKGROUND_COLOR = "#ffffff"
 
 
 def normalize_text(value: Any) -> str:
@@ -99,11 +102,29 @@ def extract_json_texts(data: Any) -> List[str]:
     return _deduplicate(values)
 
 
-def build_text_html(title: str, paragraphs: Iterable[str]) -> str:
+def normalize_hex_color(value: Any, default: str = DEFAULT_BACKGROUND_COLOR) -> str:
+    color = str(value or "").strip()
+    if not color:
+        return default
+    if re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
+        return color.lower()
+    if re.fullmatch(r"#[0-9A-Fa-f]{3}", color):
+        return "#" + "".join(char * 2 for char in color[1:]).lower()
+    return default
+
+
+def extracted_text_document(paragraphs: Iterable[str], empty_text: str = "No text content found.") -> str:
+    items = [normalize_text(item) for item in paragraphs]
+    items = [item for item in items if item]
+    return "\n".join(items) if items else empty_text
+
+
+def build_text_html(title: str, paragraphs: Iterable[str], background_color: str = DEFAULT_BACKGROUND_COLOR) -> str:
     items = list(paragraphs)
     body = "\n".join(f"<p>{html.escape(item)}</p>" for item in items)
     if not body:
         body = "<p>No text content found.</p>"
+    background_color = normalize_hex_color(background_color)
 
     return f"""<!DOCTYPE html>
 <html>
@@ -111,15 +132,24 @@ def build_text_html(title: str, paragraphs: Iterable[str]) -> str:
   <meta charset="utf-8">
   <title>{html.escape(title)}</title>
   <style>
-    @page {{ margin: 14mm; }}
-    body {{
+    @page {{ margin: 14mm; background: {background_color}; }}
+    * {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    html, body {{
       margin: 0;
+      min-height: 100%;
       color: #172033;
-      background: #ffffff;
+      background: {background_color};
       font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
       font-size: 16px;
       line-height: 1.75;
       overflow-wrap: anywhere;
+    }}
+    body::before {{
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: {background_color};
+      z-index: -1;
     }}
     main {{ max-width: 980px; margin: 0 auto; padding: 28px 34px; }}
     h1 {{ margin: 0 0 24px; font-size: 24px; font-weight: 600; }}
@@ -156,7 +186,12 @@ def _wrap_text(text: str, max_width: int) -> List[str]:
     return lines or [""]
 
 
-def build_text_svg(title: str, paragraphs: Iterable[str], width: int = 1200) -> str:
+def build_text_svg(
+    title: str,
+    paragraphs: Iterable[str],
+    width: int = 1200,
+    background_color: str = DEFAULT_BACKGROUND_COLOR,
+) -> str:
     text_lines = []
     for paragraph in paragraphs:
         text_lines.extend(_wrap_text(paragraph, 76))
@@ -176,10 +211,11 @@ def build_text_svg(title: str, paragraphs: Iterable[str], width: int = 1200) -> 
         nodes.append(
             f'<text x="{padding}" y="{y}" font-size="18" fill="#172033">{html.escape(line)}</text>'
         )
+    background_color = normalize_hex_color(background_color)
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
-  <rect width="100%" height="100%" fill="#ffffff"/>
+  <rect width="100%" height="100%" fill="{background_color}"/>
   <g font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif">
     <text x="{padding}" y="{padding + 28}" font-size="26" font-weight="600" fill="#111827">{html.escape(title)}</text>
     {''.join(nodes)}

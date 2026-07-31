@@ -16,7 +16,11 @@ class XmlToHtmlConverter(BaseConverter):
             self.validate_input(input_path)
             
             root = ET.parse(input_path).getroot()
-            html_content = build_text_html('XML Content', extract_xml_texts(root))
+            html_content = build_text_html(
+                'XML Content',
+                extract_xml_texts(root),
+                background_color=options.get('background_color', '#ffffff'),
+            )
             
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)

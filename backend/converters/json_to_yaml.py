@@ -2,6 +2,8 @@ import json
 import yaml
 from .base import BaseConverter
 from typing import Dict, Any
+from backend.utils.structured_text import extract_json_texts
+from backend.utils.text_utils import read_text_file
 
 class JsonToYamlConverter(BaseConverter):
     """JSON 到 YAML 转换器"""
@@ -15,18 +17,16 @@ class JsonToYamlConverter(BaseConverter):
         try:
             self.validate_input(input_path)
             
-            # 读取 JSON 内容
-            with open(input_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            data = json.loads(read_text_file(input_path, options.get('encoding')))
             
             # 转换参数
             indent = options.get('indent', 2)
             sort_keys = options.get('sort_keys', False)
             
-            # 写入 YAML 内容
+            content = extract_json_texts(data)
             with open(output_path, 'w', encoding='utf-8') as f:
                 yaml.dump(
-                    data, 
+                    content,
                     f, 
                     indent=indent, 
                     sort_keys=sort_keys, 

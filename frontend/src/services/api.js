@@ -104,6 +104,16 @@ const handleResponse = async (response, apiBaseUrl, file) => {
       errorDetail = `转换失败 (${response.status}: ${response.statusText})`;
     }
 
+    if (response.status === 401 && errorCode === 'login_required') {
+      window.dispatchEvent(
+        new CustomEvent('login-required', {
+          detail: {
+            message: errorDetail,
+          },
+        })
+      );
+    }
+
     if (response.status === 403 && errorCode === 'membership_required') {
       window.dispatchEvent(
         new CustomEvent('membership-required', {
@@ -240,6 +250,7 @@ export const convertGeneral = async (file, targetFormat, options = {}) => {
     if (options.remove_empty_tags !== undefined) formData.append('remove_empty_tags', options.remove_empty_tags);
     if (options.page_size) formData.append('page_size', options.page_size);
     if (options.orientation) formData.append('orientation', options.orientation);
+    if (options.page_range) formData.append('page_range', options.page_range);
     if (options.excel_orientation) formData.append('excel_orientation', options.excel_orientation);
     if (options.excel_scale_mode) formData.append('excel_scale_mode', options.excel_scale_mode);
     
@@ -335,9 +346,11 @@ export const batchDownload = async (files) => {
     const response = await fetch(`${apiBaseUrl}/api/batch-download`, {
       method: 'POST',
       body: formData,
+      headers: buildAuthHeaders(),
     });
     
     if (!response.ok) {
+      await handleResponse(response, apiBaseUrl);
       throw new Error('Batch download failed');
     }
     
