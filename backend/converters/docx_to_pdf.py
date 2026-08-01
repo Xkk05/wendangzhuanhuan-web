@@ -4,10 +4,10 @@ import shutil
 import html
 import logging
 from docx import Document
-from docx.enum.section import WD_ORIENT
 from .base import BaseConverter
 from .html_to_pdf import HtmlToPdfConverter
 from typing import Dict, Any, Optional, Tuple
+from backend.utils.docx_layout import normalize_document_for_portrait_pdf
 from backend.utils.logger import setup_logger
 
 class DocxToPdfConverter(BaseConverter):
@@ -72,20 +72,48 @@ class DocxToPdfConverter(BaseConverter):
         except Exception as exc:
             self.logger.warning(f"[DocxToPdf] 页面方向归一失败，继续转换: {exc}")
 
+    def _fit_word_content_to_page_width(self, doc, orientation: str) -> None:
+        if self._is_landscape_orientation(orientation):
+            return
+        try:
+            usable_widths = []
+            for section in doc.Sections:
+                setup = section.PageSetup
+                usable_width = setup.PageWidth - setup.LeftMargin - setup.RightMargin
+                if usable_width > 0:
+                    usable_widths.append(usable_width)
+            max_width = min(usable_widths) if usable_widths else None
+
+            for table in doc.Tables:
+                try:
+                    table.AllowAutoFit = True
+                    table.Rows.LeftIndent = 0
+                    table.PreferredWidthType = 2  # wdPreferredWidthPercent
+                    table.PreferredWidth = 100
+                    table.AutoFitBehavior(2)  # wdAutoFitWindow
+                    for row in table.Rows:
+                        row.AllowBreakAcrossPages = True
+                except Exception as table_exc:
+                    self.logger.warning(f"[DocxToPdf] 表格宽度适配失败，继续处理其他内容: {table_exc}")
+
+            if max_width:
+                for inline_shape in doc.InlineShapes:
+                    try:
+                        if inline_shape.Width > max_width:
+                            inline_shape.LockAspectRatio = True
+                            inline_shape.Width = max_width
+                    except Exception as image_exc:
+                        self.logger.warning(f"[DocxToPdf] 图片宽度适配失败，继续处理其他内容: {image_exc}")
+        except Exception as exc:
+            self.logger.warning(f"[DocxToPdf] 纵向内容宽度适配失败，继续转换: {exc}")
+
     def _prepare_docx_orientation_for_libreoffice(self, input_path: str, output_path: str, orientation: str) -> Tuple[str, Optional[str]]:
         if self._is_landscape_orientation(orientation):
             return input_path, None
 
         try:
             document = Document(input_path)
-            changed = False
-            for section in document.sections:
-                if section.orientation != WD_ORIENT.PORTRAIT:
-                    section.orientation = WD_ORIENT.PORTRAIT
-                    changed = True
-                if section.page_width > section.page_height:
-                    section.page_width, section.page_height = section.page_height, section.page_width
-                    changed = True
+            changed = normalize_document_for_portrait_pdf(document)
             if not changed:
                 return input_path, None
 
@@ -126,6 +154,7 @@ class DocxToPdfConverter(BaseConverter):
             # 打开文档
             doc = word.Documents.Open(input_path, ReadOnly=True)
             self._apply_word_page_orientation(doc, orientation)
+            self._fit_word_content_to_page_width(doc, orientation)
             
             # 保存为 PDF
             # wdFormatPDF = 17
