@@ -3,6 +3,7 @@ import os
 from .base import BaseConverter
 from .html_to_pdf import HtmlToPdfConverter
 from typing import Dict, Any
+from backend.utils.text_utils import read_text_file
 
 class TxtToPdfConverter(BaseConverter):
     """TXT 到 PDF 转换器（优化版 - 参考 conversion_core）
@@ -44,19 +45,16 @@ class TxtToPdfConverter(BaseConverter):
             except:
                 pass
 
-            css_orientation = 'landscape' if orientation == '横向' else 'portrait'
-            
-            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
-                text = f.read()
+            normalized_orientation = orientation.lower()
+            css_orientation = 'landscape' if normalized_orientation in {'landscape', '横向', '橫向'} else 'portrait'
+
+            text = read_text_file(input_path, options.get('encoding'))
             
             self.update_progress(input_path, 30)
             
             # 转义 HTML 特殊字符
             import html
             text_escaped = html.escape(text)
-            
-            # 保留换行和空格
-            text_html = text_escaped.replace('\n', '<br>').replace(' ', '&nbsp;')
             
             html_content = f'''<!DOCTYPE html>
 <html>
@@ -76,12 +74,15 @@ class TxtToPdfConverter(BaseConverter):
             font-size: {font_size}px;
             line-height: {line_height};
             white-space: pre-wrap;
-            word-wrap: break-word;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            max-width: 100%;
+            box-sizing: border-box;
         }}
     </style>
 </head>
 <body>
-{text_html}
+{text_escaped}
 </body>
 </html>'''
             
