@@ -16,8 +16,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN sed -i 's|deb.debian.org|mirrors.tencent.com|g; s|security.debian.org|mirrors.tencent.com|g' /etc/apt/sources.list.d/debian.sources && \
-    apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update && \
+RUN apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update && \
     apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0 install -y --no-install-recommends --fix-missing \
     chromium \
     ffmpeg \
