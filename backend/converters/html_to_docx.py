@@ -1,8 +1,10 @@
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Inches, Pt
 from bs4 import NavigableString, Tag
+from io import BytesIO
 from .base import BaseConverter
 from typing import Dict, Any
+from backend.utils.html_resources import resolve_html_image
 from backend.utils.html_content import prepare_content_soup
 from backend.utils.text_utils import read_text_file
 
@@ -42,25 +44,61 @@ class HtmlToDocxConverter(BaseConverter):
             for column_index, value in enumerate(row):
                 table.cell(row_index, column_index).text = value
 
-    def _render_list(self, doc: Document, element: Tag) -> None:
+    def _render_image(self, doc: Document, element: Tag, base_path: str) -> bool:
+        src = element.get('src')
+        resolved = resolve_html_image(src, base_path=base_path)
+        if not resolved:
+            alt_text = str(element.get('alt') or '').strip()
+            if alt_text:
+                doc.add_paragraph(alt_text)
+            return False
+
+        image_bytes, _media_type = resolved
+        width_inches = 5.8
+        try:
+            from PIL import Image
+
+            with Image.open(BytesIO(image_bytes)) as image:
+                width_inches = min(max(image.width / 96, 0.3), 5.8)
+        except Exception:
+            pass
+
+        paragraph = doc.add_paragraph()
+        run = paragraph.add_run()
+        run.add_picture(BytesIO(image_bytes), width=Inches(width_inches))
+        return True
+
+    def _render_list(self, doc: Document, element: Tag, base_path: str) -> None:
         style = 'List Bullet' if element.name == 'ul' else 'List Number'
         for item in element.find_all('li', recursive=False):
             text_parts = []
             nested_lists = []
+            images = []
             for child in item.children:
                 if isinstance(child, NavigableString):
                     text_parts.append(str(child).strip())
                 elif isinstance(child, Tag) and child.name in {'ul', 'ol'}:
                     nested_lists.append(child)
+                elif isinstance(child, Tag) and child.name == 'img':
+                    images.append(child)
                 elif isinstance(child, Tag):
                     text_parts.append(child.get_text(' ', strip=True))
             text = ' '.join(part for part in text_parts if part).strip()
             if text:
                 doc.add_paragraph(text, style=style)
+            for image in images:
+                self._render_image(doc, image, base_path)
             for nested_list in nested_lists:
-                self._render_list(doc, nested_list)
+                self._render_list(doc, nested_list, base_path)
 
-    def _render_blocks(self, doc: Document, parent: Tag) -> None:
+    def _render_text_and_images(self, doc: Document, element: Tag, base_path: str) -> None:
+        text = element.get_text(' ', strip=True)
+        if text:
+            doc.add_paragraph(text)
+        for image in element.find_all('img'):
+            self._render_image(doc, image, base_path)
+
+    def _render_blocks(self, doc: Document, parent: Tag, base_path: str) -> None:
         for element in parent.children:
             if isinstance(element, NavigableString):
                 text = str(element).strip()
@@ -75,13 +113,13 @@ class HtmlToDocxConverter(BaseConverter):
             elif element.name == 'table':
                 self._render_table(doc, element)
             elif element.name in {'ul', 'ol'}:
-                self._render_list(doc, element)
+                self._render_list(doc, element, base_path)
+            elif element.name == 'img':
+                self._render_image(doc, element, base_path)
             elif element.name in {'p', 'pre', 'blockquote'}:
-                text = element.get_text(' ', strip=True)
-                if text:
-                    doc.add_paragraph(text)
-            elif element.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'pre', 'blockquote', 'table', 'ul', 'ol']):
-                self._render_blocks(doc, element)
+                self._render_text_and_images(doc, element, base_path)
+            elif element.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'pre', 'blockquote', 'table', 'ul', 'ol', 'img']):
+                self._render_blocks(doc, element, base_path)
             else:
                 text = element.get_text(' ', strip=True)
                 if text:
@@ -114,7 +152,7 @@ class HtmlToDocxConverter(BaseConverter):
                 soup = prepare_content_soup(html_content, options)
                 self.update_progress(input_path, 50)
                 root = soup.body or soup
-                self._render_blocks(doc, root)
+                self._render_blocks(doc, root, input_path)
                 self.update_progress(input_path, 80)
             
             # 保存文档

@@ -1,4 +1,6 @@
+import base64
 import zipfile
+from io import BytesIO
 from pathlib import Path
 
 import fitz
@@ -552,6 +554,35 @@ def test_html_docx_preserves_nested_blocks_without_duplicate_list_text(tmp_path)
     assert paragraph_text.count('二级') == 1
     assert len(document.tables) == 1
     assert document.tables[0].cell(1, 1).text == '42'
+
+
+def test_html_docx_embeds_local_and_data_uri_images(tmp_path):
+    local_image = tmp_path / 'local.png'
+    Image.new('RGB', (160, 90), (80, 140, 200)).save(local_image)
+
+    inline_buffer = BytesIO()
+    Image.new('RGB', (120, 80), (180, 90, 120)).save(inline_buffer, format='PNG')
+    inline_data = base64.b64encode(inline_buffer.getvalue()).decode('ascii')
+
+    source = tmp_path / 'images.html'
+    source.write_text(
+        '<!doctype html><html><body><h1>图文页面</h1><p>图片前正文</p>'
+        '<img src="local.png" alt="本地图片">'
+        f'<p>内联图片<img src="data:image/png;base64,{inline_data}" alt="内联图片"></p>'
+        '</body></html>',
+        encoding='utf-8',
+    )
+    output = tmp_path / 'images.docx'
+
+    assert HtmlToDocxConverter().convert(str(source), str(output))['success']
+
+    document = Document(output)
+    assert len(document.inline_shapes) == 2
+    text = '\n'.join(paragraph.text for paragraph in document.paragraphs)
+    assert '图文页面' in text and '图片前正文' in text
+    with zipfile.ZipFile(output) as archive:
+        media_files = [name for name in archive.namelist() if name.startswith('word/media/image')]
+    assert len(media_files) == 2
 
 
 def test_excel_html_escapes_sheet_names_and_cell_content(tmp_path):

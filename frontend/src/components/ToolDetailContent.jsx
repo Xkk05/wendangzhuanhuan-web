@@ -979,7 +979,7 @@ function ToolDetailContent({ toolName, onBack }) {
             
             if (source === 'HTML') {
               options.enable_preview = htmlOptions.enablePreview;
-              options.codeMode = htmlOptions.codeMode;  // 直接使用 codeMode
+              options.codeMode = target === 'PDF' ? htmlOptions.codeMode : false;
               options.css_handling = htmlOptions.cssHandling;
               options.compress_css = htmlOptions.compressCss;
               options.custom_css = htmlOptions.customCss;
@@ -1366,14 +1366,16 @@ function ToolDetailContent({ toolName, onBack }) {
                         />
                         <span>{t('toolDetail.options.enable_preview')}</span>
                       </label>
-                      <label className="checkbox-label">
-                        <input 
-                          type="checkbox" 
-                          checked={htmlOptions.codeMode}
-                          onChange={(e) => setHtmlOptions({...htmlOptions, codeMode: e.target.checked})}
-                        />
-                        <span>{t('toolDetail.options.convert_to_code')}</span>
-                      </label>
+                      {target === 'PDF' && (
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={htmlOptions.codeMode}
+                            onChange={(e) => setHtmlOptions({...htmlOptions, codeMode: e.target.checked})}
+                          />
+                          <span>{t('toolDetail.options.convert_to_code')}</span>
+                        </label>
+                      )}
                       <button className="preview-html-btn" onClick={handlePreviewHtml}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />

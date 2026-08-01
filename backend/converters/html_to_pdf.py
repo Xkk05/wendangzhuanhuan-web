@@ -9,10 +9,6 @@ import shutil
 import re
 from pathlib import Path
 # html2image and PIL imports removed as they are no longer used for browser print method
-# kept reportlab for code mode
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from backend.utils.font_utils import register_reportlab_cjk_font
 from backend.utils.structured_text import normalize_hex_color
 from backend.utils.text_utils import read_text_file
 
@@ -335,114 +331,87 @@ class HtmlToPdfConverter(BaseConverter):
         os.replace(temp_path, output_path)
 
     def _convert_as_code(self, input_path: str, output_path: str, options: dict) -> Dict[str, Any]:
-        """将HTML源代码转换为PDF（代码格式）- 使用ReportLab"""
-        from reportlab.lib.pagesizes import A4, A3, letter, legal, landscape
-        from reportlab.lib.units import cm
-        from reportlab.pdfgen import canvas
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        from reportlab.lib.colors import HexColor
-        
+        """将 HTML 源码转换为 PDF（代码格式），用浏览器打印以稳定支持中文字体。"""
+        import html
+
         self.update_progress(input_path, 20)
-        
-        font_name = register_reportlab_cjk_font()
 
         html_code = self._prepare_html_content(
             read_text_file(input_path, options.get('encoding')),
             options
         )
-        
-        self.update_progress(input_path, 40)
-        
-        # Get page size
-        page_size_name = options.get('page_size', 'A4')
-        page_sizes = {
-            'A4': A4,
-            'A3': A3,
-            'Letter': letter,
-            'Legal': legal
-        }
-        page_size = page_sizes.get(page_size_name, A4)
-        orientation = str(options.get('orientation') or '').strip().lower()
-        if orientation in {'landscape', '横向', '橫向'}:
-            page_size = landscape(page_size)
-        
-        # Create PDF
-        c = canvas.Canvas(output_path, pagesize=page_size)
-        width, height = page_size
-        
-        # Settings
-        margin = 1.5 * cm
-        font_size = 8
-        line_height = font_size * 1.4
-        
-        # Calculate usable area
-        usable_width = width - 2 * margin
-        usable_height = height - 2 * margin
-        
-        # Split code into lines
         lines = html_code.split('\n')
-        
-        self.update_progress(input_path, 60)
-        
-        # Draw code
-        y = height - margin
-        line_num = 1
-        
-        for line in lines:
-            # Check if need new page
-            if y < margin + line_height:
-                c.showPage()
-                y = height - margin
-            
-            # Draw line number
-            c.setFont(font_name, font_size)
-            c.setFillColor(HexColor('#666666'))
-            c.drawRightString(margin + 30, y, str(line_num))
-            
-            # Draw separator
-            c.setStrokeColor(HexColor('#cccccc'))
-            c.line(margin + 35, y - 2, margin + 35, y + font_size)
-            
-            # Draw code line
-            c.setFillColor(HexColor('#000000'))
-            
-            # Handle long lines - wrap text
-            x_pos = margin + 40
-            remaining_line = line
-            max_chars = int((usable_width - 45) / (font_size * 0.6))  # Approximate chars per line
-            
-            while remaining_line:
-                if len(remaining_line) <= max_chars:
-                    c.drawString(x_pos, y, remaining_line)
-                    break
-                else:
-                    # Find good break point
-                    chunk = remaining_line[:max_chars]
-                    c.drawString(x_pos, y, chunk)
-                    remaining_line = remaining_line[max_chars:]
-                    
-                    # Move to next line
-                    y -= line_height
-                    if y < margin + line_height:
-                        c.showPage()
-                        y = height - margin
-                    
-                    # Continue with indentation
-                    x_pos = margin + 50
-            
-            y -= line_height
-            line_num += 1
-        
-        self.update_progress(input_path, 80)
-        
-        c.save()
-        
-        self.update_progress(input_path, 100)
-        
-        return {
-            'success': True,
-            'output_path': output_path,
-            'size': self.get_output_size(output_path),
-            'method': 'code_mode_reportlab'
-        }
+        code_rows = '\n'.join(
+            '<tr>'
+            f'<td class="line-no">{index}</td>'
+            f'<td class="line-code"><pre>{html.escape(line) or " "}</pre></td>'
+            '</tr>'
+            for index, line in enumerate(lines, start=1)
+        )
+
+        code_html = f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{
+            margin: 0;
+            background: #ffffff;
+            color: #111111;
+            font-family: "Noto Sans CJK SC", "Microsoft YaHei", "SimSun", "DejaVu Sans Mono", Consolas, monospace;
+            font-size: 11px;
+            line-height: 1.45;
+        }}
+        table.code {{
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }}
+        .line-no {{
+            width: 42px;
+            padding: 0 8px 0 0;
+            color: #666666;
+            text-align: right;
+            vertical-align: top;
+            border-right: 1px solid #d0d0d0;
+            user-select: none;
+        }}
+        .line-code {{
+            padding-left: 8px;
+            vertical-align: top;
+        }}
+        pre {{
+            margin: 0;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            font-family: inherit;
+        }}
+    </style>
+</head>
+<body>
+    <table class="code">{code_rows}</table>
+</body>
+</html>'''
+
+        render_input_path = output_path + '.code.html'
+        try:
+            with open(render_input_path, 'w', encoding='utf-8') as render_file:
+                render_file.write(code_html)
+
+            render_options = {
+                'code_mode': False,
+                'page_size': options.get('page_size'),
+                'orientation': options.get('orientation'),
+                'background_color': options.get('background_color') or '#ffffff',
+                'page_range': options.get('page_range'),
+            }
+            result = self.convert(render_input_path, output_path, **render_options)
+            result['method'] = 'code_mode_browser_print'
+            self.update_progress(input_path, 100)
+            return result
+        finally:
+            try:
+                os.remove(render_input_path)
+            except Exception:
+                pass

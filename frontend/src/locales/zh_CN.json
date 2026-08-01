@@ -142,7 +142,7 @@
       "title": "转换选项",
       "preview_options": "预览选项",
       "enable_preview": "启用预览",
-      "convert_to_code": "转换为源代码（勾选则输出带高亮的代码 PDF）",
+      "convert_to_code": "导出 HTML 源码 PDF（非网页渲染）",
       "css_options": "CSS 选项",
       "css_handling": "CSS 处理",
       "keep_all_css": "保留所有 CSS",
