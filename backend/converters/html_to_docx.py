@@ -6,7 +6,7 @@ from .base import BaseConverter
 from typing import Dict, Any
 from backend.utils.html_resources import resolve_html_image
 from backend.utils.html_content import prepare_content_soup
-from backend.utils.text_utils import read_text_file
+from backend.utils.text_utils import read_text_file, sanitize_xml_text
 
 
 class HtmlToDocxConverter(BaseConverter):
@@ -21,6 +21,19 @@ class HtmlToDocxConverter(BaseConverter):
     def __init__(self):
         super().__init__()
         self.supported_formats = ['docx', 'doc']
+
+    @staticmethod
+    def _clean_text(value: object, strip: bool = True) -> str:
+        text = sanitize_xml_text(value)
+        return text.strip() if strip else text
+
+    def _add_paragraph(self, doc: Document, value: object, style: str | None = None):
+        text = self._clean_text(value)
+        if not text:
+            return None
+        if style:
+            return doc.add_paragraph(text, style=style)
+        return doc.add_paragraph(text)
 
     @staticmethod
     def _table_rows(table_element: Tag) -> list[list[str]]:
@@ -42,7 +55,7 @@ class HtmlToDocxConverter(BaseConverter):
         table.style = 'Table Grid'
         for row_index, row in enumerate(rows):
             for column_index, value in enumerate(row):
-                table.cell(row_index, column_index).text = value
+                table.cell(row_index, column_index).text = self._clean_text(value)
 
     def _render_image(self, doc: Document, element: Tag, base_path: str) -> bool:
         src = element.get('src')
@@ -50,7 +63,7 @@ class HtmlToDocxConverter(BaseConverter):
         if not resolved:
             alt_text = str(element.get('alt') or '').strip()
             if alt_text:
-                doc.add_paragraph(alt_text)
+                self._add_paragraph(doc, alt_text)
             return False
 
         image_bytes, _media_type = resolved
@@ -85,7 +98,7 @@ class HtmlToDocxConverter(BaseConverter):
                     text_parts.append(child.get_text(' ', strip=True))
             text = ' '.join(part for part in text_parts if part).strip()
             if text:
-                doc.add_paragraph(text, style=style)
+                self._add_paragraph(doc, text, style=style)
             for image in images:
                 self._render_image(doc, image, base_path)
             for nested_list in nested_lists:
@@ -94,7 +107,7 @@ class HtmlToDocxConverter(BaseConverter):
     def _render_text_and_images(self, doc: Document, element: Tag, base_path: str) -> None:
         text = element.get_text(' ', strip=True)
         if text:
-            doc.add_paragraph(text)
+            self._add_paragraph(doc, text)
         for image in element.find_all('img'):
             self._render_image(doc, image, base_path)
 
@@ -103,13 +116,15 @@ class HtmlToDocxConverter(BaseConverter):
             if isinstance(element, NavigableString):
                 text = str(element).strip()
                 if text:
-                    doc.add_paragraph(text)
+                    self._add_paragraph(doc, text)
                 continue
             if not isinstance(element, Tag):
                 continue
 
             if element.name in {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}:
-                doc.add_heading(element.get_text(' ', strip=True), level=int(element.name[1]))
+                text = self._clean_text(element.get_text(' ', strip=True))
+                if text:
+                    doc.add_heading(text, level=int(element.name[1]))
             elif element.name == 'table':
                 self._render_table(doc, element)
             elif element.name in {'ul', 'ol'}:
@@ -123,7 +138,7 @@ class HtmlToDocxConverter(BaseConverter):
             else:
                 text = element.get_text(' ', strip=True)
                 if text:
-                    doc.add_paragraph(text)
+                    self._add_paragraph(doc, text)
     
     def convert(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         """将 HTML 转换为 DOCX"""
@@ -145,7 +160,7 @@ class HtmlToDocxConverter(BaseConverter):
             if mode == 'source':
                 # 源码模式：保留完整 HTML 源码
                 paragraph = doc.add_paragraph()
-                run = paragraph.add_run(html_content)
+                run = paragraph.add_run(self._clean_text(html_content, strip=False))
                 run.font.name = 'Consolas'
                 run.font.size = Pt(10)
             else:

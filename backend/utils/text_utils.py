@@ -49,6 +49,26 @@ def read_text_file(path: str, encoding: Optional[str] = None) -> str:
     return decode_text_bytes(Path(path).read_bytes(), encoding=encoding)
 
 
+def sanitize_xml_text(text: object) -> str:
+    """Return text that can be safely written into XML-backed documents."""
+    if text is None:
+        return ""
+
+    value = str(text).replace("\x0c", "\n")
+    safe_chars = []
+    for char in value:
+        codepoint = ord(char)
+        if char in "\t\n\r":
+            safe_chars.append(char)
+        elif 0x20 <= codepoint <= 0xD7FF:
+            safe_chars.append(char)
+        elif 0xE000 <= codepoint <= 0xFFFD:
+            safe_chars.append(char)
+        elif 0x10000 <= codepoint <= 0x10FFFF:
+            safe_chars.append(char)
+    return "".join(safe_chars)
+
+
 def contains_cjk(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
 

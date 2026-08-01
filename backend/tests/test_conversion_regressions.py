@@ -585,6 +585,26 @@ def test_html_docx_embeds_local_and_data_uri_images(tmp_path):
     assert len(media_files) == 2
 
 
+def test_html_docx_sanitizes_xml_invalid_control_characters(tmp_path):
+    source = tmp_path / 'control-chars.html'
+    source.write_text(
+        '<!doctype html><html><body><h1>标题\x0c续</h1>'
+        '<p>第一段\x0c第二段</p><table><tr><td>单元\x00格</td></tr></table>'
+        '<ul><li>列\x08表</li></ul></body></html>',
+        encoding='utf-8',
+    )
+    output = tmp_path / 'control-chars.docx'
+
+    assert HtmlToDocxConverter().convert(str(source), str(output))['success']
+
+    document = Document(output)
+    paragraph_text = '\n'.join(paragraph.text for paragraph in document.paragraphs)
+    assert '标题' in paragraph_text and '续' in paragraph_text
+    assert '第一段' in paragraph_text and '第二段' in paragraph_text
+    assert '列表' in paragraph_text
+    assert document.tables[0].cell(0, 0).text == '单元格'
+
+
 def test_excel_html_escapes_sheet_names_and_cell_content(tmp_path):
     source = tmp_path / 'special.xlsx'
     workbook = Workbook()
