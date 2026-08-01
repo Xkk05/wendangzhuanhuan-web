@@ -22,10 +22,58 @@ logger = logging.getLogger(__name__)
 
 class HtmlToPdfConverter(BaseConverter):
     """HTML 到 PDF 转换器（基于浏览器打印模式 - 参考 conversion_core）"""
+
+    PRINT_FIT_CSS = """
+@media print {
+    html, body {
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+    *, *::before, *::after {
+        box-sizing: inherit;
+    }
+    body * {
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+    img, svg, canvas, video {
+        max-width: 100% !important;
+        height: auto !important;
+    }
+    table {
+        width: 100% !important;
+        max-width: 100% !important;
+        table-layout: fixed !important;
+        border-collapse: collapse;
+    }
+    col, colgroup {
+        width: auto !important;
+    }
+    th, td {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+    pre, code {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+}
+"""
     
     def __init__(self):
         super().__init__()
         self.supported_formats = ['pdf']
+
+    def _append_style(self, soup: BeautifulSoup, css: str) -> None:
+        style = soup.new_tag('style')
+        style.string = css
+        (soup.head or soup).append(style)
         
     def _get_browser_path(self):
         """获取浏览器路径 (Chrome/Edge)"""
@@ -89,32 +137,31 @@ class HtmlToPdfConverter(BaseConverter):
 
         custom_css = str(options.get('custom_css') or '').strip()
         if custom_css and not remove_css:
-            style = soup.new_tag('style')
-            style.string = custom_css
-            (soup.head or soup).append(style)
+            self._append_style(soup, custom_css)
 
         page_size = str(options.get('page_size') or '').strip()
         orientation = str(options.get('orientation') or '').strip().lower()
         if page_size or orientation:
             normalized_size = page_size if page_size in {'A3', 'A4', 'Letter', 'Legal'} else 'A4'
             is_landscape = orientation in {'landscape', '横向', '橫向'}
-            page_style = soup.new_tag('style')
-            page_style.string = (
+            self._append_style(
+                soup,
                 f'@page {{ size: {normalized_size} '
                 f'{"landscape" if is_landscape else "portrait"}; margin: 10mm; }}'
             )
-            (soup.head or soup).append(page_style)
 
         background_color = normalize_hex_color(options.get('background_color'), '')
         if background_color:
-            background_style = soup.new_tag('style')
-            background_style.string = (
+            self._append_style(
+                soup,
                 '* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } '
                 f'@page {{ background: {background_color}; }} '
-                f'html, body {{ background: {background_color} !important; min-height: 100%; }} '
+                f'html, body {{ background: {background_color} !important; min-height: 100vh; }} '
                 f'body::before {{ content: ""; position: fixed; inset: 0; background: {background_color}; z-index: -1; }}'
             )
-            (soup.head or soup).append(background_style)
+
+        if not options.get('code_mode') and options.get('fit_to_page_width', True) is not False:
+            self._append_style(soup, self.PRINT_FIT_CSS)
 
         if soup.head:
             charset_meta = soup.head.find('meta', attrs={'charset': True})
