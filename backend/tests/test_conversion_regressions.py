@@ -3,6 +3,8 @@ from pathlib import Path
 
 import fitz
 from docx import Document
+from docx.enum.section import WD_ORIENT
+from docx.oxml.ns import qn
 from docx.shared import Inches as DocxInches
 from openpyxl import Workbook
 from PIL import Image, ImageChops, ImageStat
@@ -10,6 +12,7 @@ from pptx import Presentation
 
 from backend.converters.docx_to_epub import DocxToEpubConverter
 from backend.converters.docx_to_image import DocxToImageConverter
+from backend.converters.docx_to_pdf import DocxToPdfConverter
 from backend.converters.docx_to_ppt import DocxToPptConverter
 from backend.converters.excel_to_pdf import ExcelToPdfConverter
 from backend.converters.excel_to_html import ExcelToHtmlConverter
@@ -30,6 +33,7 @@ from backend.converters.pdf_to_md import PdfToMdConverter
 from backend.converters.pdf_to_docx import PdfToDocxConverter
 from backend.converters.pdf_to_ppt import PdfToPptConverter
 from backend.converters.txt_to_image import TxtToImageConverter
+from backend.converters.txt_to_pdf import TxtToPdfConverter
 from backend.converters.txt_to_speech import TxtToSpeechConverter
 from backend.converters.xml_to_html import XmlToHtmlConverter
 from backend.converters.xml_to_image import XmlToImageConverter
@@ -122,6 +126,96 @@ def test_docx_png_and_jpg_apply_watermark(tmp_path):
         assert plain_image.size == marked_image.size
         difference = ImageChops.difference(plain_image, marked_image).convert('L')
         assert ImageStat.Stat(difference).mean[0] > 0.05
+
+
+def test_docx_portrait_pdf_preprocess_fits_wide_tables(tmp_path):
+    source = tmp_path / 'wide-table.docx'
+    output = tmp_path / 'wide-table.pdf'
+    document = Document()
+    section = document.sections[0]
+    section.orientation = WD_ORIENT.LANDSCAPE
+    section.page_width, section.page_height = section.page_height, section.page_width
+    table = document.add_table(rows=2, cols=4)
+    for row_index, row in enumerate(table.rows):
+        for col_index, cell in enumerate(row.cells):
+            cell.width = DocxInches(3)
+            cell.text = f'R{row_index + 1}C{col_index + 1} 宽表格内容'
+    document.save(source)
+
+    prepared_path, cleanup_path = DocxToPdfConverter()._prepare_docx_orientation_for_libreoffice(
+        str(source),
+        str(output),
+        'portrait',
+    )
+
+    try:
+        assert cleanup_path == prepared_path
+        prepared = Document(prepared_path)
+        prepared_section = prepared.sections[0]
+        assert prepared_section.orientation == WD_ORIENT.PORTRAIT
+        assert prepared_section.page_width < prepared_section.page_height
+
+        prepared_table = prepared.tables[0]
+        tbl_pr = prepared_table._tbl.tblPr
+        tbl_w = tbl_pr.find(qn('w:tblW'))
+        tbl_layout = tbl_pr.find(qn('w:tblLayout'))
+        assert tbl_w is not None
+        assert tbl_w.get(qn('w:type')) == 'pct'
+        assert tbl_w.get(qn('w:w')) == '5000'
+        assert tbl_layout is not None
+        assert tbl_layout.get(qn('w:type')) == 'autofit'
+
+        available_width = (
+            prepared_section.page_width
+            - prepared_section.left_margin
+            - prepared_section.right_margin
+        )
+        first_row_width = sum(
+            int(cell.width or 0)
+            for cell in prepared_table.rows[0].cells
+        )
+        assert first_row_width <= available_width
+    finally:
+        if cleanup_path and Path(cleanup_path).exists():
+            Path(cleanup_path).unlink()
+
+
+def test_html_pdf_print_css_fits_wide_content():
+    html = HtmlToPdfConverter()._prepare_html_content(
+        '<html><head></head><body>'
+        '<table style="width: 1800px"><tr><td>很长的表格内容</td></tr></table>'
+        '<img style="width: 1600px" src="sample.png">'
+        '<pre>https://example.com/very/long/path/that/should/wrap</pre>'
+        '</body></html>',
+        {},
+    )
+
+    assert 'table-layout: fixed !important' in html
+    assert 'body *' in html
+    assert 'max-width: 100% !important' in html
+    assert 'overflow-wrap: anywhere' in html
+    assert 'white-space: pre-wrap' in html
+
+
+def test_txt_pdf_html_keeps_encoding_spaces_and_wrapping(tmp_path, monkeypatch):
+    source = tmp_path / 'source.txt'
+    output = tmp_path / 'source.pdf'
+    source.write_bytes('第一列    第二列\n超长链接 https://example.com/'.encode('gb18030'))
+    captured = {}
+
+    def fake_convert(self, input_path, output_path, **options):
+        captured['html'] = Path(input_path).read_text(encoding='utf-8')
+        Path(output_path).write_bytes(b'%PDF-test')
+        return {'success': True, 'output_path': output_path, 'size': Path(output_path).stat().st_size}
+
+    monkeypatch.setattr(HtmlToPdfConverter, 'convert', fake_convert)
+
+    result = TxtToPdfConverter().convert(str(source), str(output))
+
+    assert result['success']
+    assert '第一列    第二列' in captured['html']
+    assert '&nbsp;' not in captured['html']
+    assert 'overflow-wrap: anywhere' in captured['html']
 
 
 def test_html_code_pdf_keeps_chinese_after_cleanup(tmp_path):
