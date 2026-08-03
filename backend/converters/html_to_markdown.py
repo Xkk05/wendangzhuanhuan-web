@@ -3,9 +3,13 @@ try:
 except ImportError:
     markdownify = None
 from .base import BaseConverter
+import os
 from typing import Dict, Any
+from bs4 import BeautifulSoup
 from backend.utils.html_content import prepare_content_soup
+from backend.utils.html_resources import image_data_uri, inline_soup_images
 from backend.utils.text_utils import read_text_file
+from .html_snapshot import render_html_snapshot, should_include_rendered_snapshot
 
 
 class HtmlToMarkdownConverter(BaseConverter):
@@ -23,16 +27,21 @@ class HtmlToMarkdownConverter(BaseConverter):
 
     def _fallback_markdown(self, soup) -> str:
         lines = []
-        for element in (soup.body or soup).find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'table']):
+        for element in (soup.body or soup).find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'img', 'ul', 'ol', 'table']):
             if element.find_parent(['table', 'ul', 'ol']) and element.name != 'table':
                 continue
             text = element.get_text(' ', strip=True)
-            if not text:
+            if not text and element.name != 'img':
                 continue
             if element.name.startswith('h'):
                 lines.append(f"{'#' * int(element.name[1])} {text}")
             elif element.name == 'p':
                 lines.append(text)
+            elif element.name == 'img':
+                src = element.get('src')
+                alt = element.get('alt') or ''
+                if src:
+                    lines.append(f"![{alt}]({src})")
             elif element.name in {'ul', 'ol'}:
                 for index, item in enumerate(element.find_all('li', recursive=False), start=1):
                     prefix = '-' if element.name == 'ul' else f'{index}.'
@@ -46,6 +55,11 @@ class HtmlToMarkdownConverter(BaseConverter):
                     lines.append('| ' + ' | '.join(['---'] * width) + ' |')
                     lines.extend('| ' + ' | '.join(row) + ' |' for row in rows[1:])
         return '\n\n'.join(lines)
+
+    def _rendered_snapshot_markdown(self, input_path: str, output_path: str, options: dict) -> str:
+        output_dir = os.path.dirname(output_path) or os.getcwd()
+        image_bytes = render_html_snapshot(input_path, output_dir, options)
+        return f"![页面渲染截图]({image_data_uri(image_bytes, 'image/png')})"
     
     def convert(self, input_path: str, output_path: str, **options) -> Dict[str, Any]:
         """将 HTML 转换为 Markdown"""
@@ -64,12 +78,23 @@ class HtmlToMarkdownConverter(BaseConverter):
                 # 源码模式：直接复制 HTML 源码
                 output_content = html_content
             else:
+                include_snapshot = should_include_rendered_snapshot(
+                    BeautifulSoup(html_content, "html.parser"),
+                    options,
+                )
                 soup = prepare_content_soup(html_content, options)
+                inline_soup_images(soup, input_path)
                 self.update_progress(input_path, 50)
                 if markdownify:
                     output_content = markdownify(str(soup.body or soup), heading_style='ATX').strip() + '\n'
                 else:
                     output_content = self._fallback_markdown(soup).strip() + '\n'
+                if include_snapshot:
+                    try:
+                        snapshot_markdown = self._rendered_snapshot_markdown(input_path, output_path, options)
+                        output_content = f"{snapshot_markdown}\n\n{output_content.lstrip()}"
+                    except Exception:
+                        pass
                 self.update_progress(input_path, 80)
             
             # 写入文件

@@ -1,12 +1,14 @@
 from docx import Document
 from docx.shared import Inches, Pt
-from bs4 import NavigableString, Tag
+from bs4 import BeautifulSoup, NavigableString, Tag
 from io import BytesIO
+import os
 from .base import BaseConverter
 from typing import Dict, Any
 from backend.utils.html_resources import resolve_html_image
 from backend.utils.html_content import prepare_content_soup
 from backend.utils.text_utils import read_text_file, sanitize_xml_text
+from .html_snapshot import render_html_snapshot, should_include_rendered_snapshot
 
 
 class HtmlToDocxConverter(BaseConverter):
@@ -67,19 +69,52 @@ class HtmlToDocxConverter(BaseConverter):
             return False
 
         image_bytes, _media_type = resolved
+        if self._add_image_bytes(doc, image_bytes):
+            return True
+
+        alt_text = str(element.get('alt') or '').strip()
+        if alt_text:
+            self._add_paragraph(doc, alt_text)
+        return False
+
+    @staticmethod
+    def _prepare_image_for_docx(image_bytes: bytes) -> tuple[bytes, float]:
+        render_bytes = image_bytes
         width_inches = 5.8
         try:
             from PIL import Image
 
             with Image.open(BytesIO(image_bytes)) as image:
                 width_inches = min(max(image.width / 96, 0.3), 5.8)
+                if image.format not in {"PNG", "JPEG", "BMP", "GIF", "TIFF"}:
+                    converted = BytesIO()
+                    image.convert("RGBA" if "A" in image.getbands() else "RGB").save(converted, format="PNG")
+                    render_bytes = converted.getvalue()
         except Exception:
             pass
+        return render_bytes, width_inches
 
+    def _add_image_bytes(self, doc: Document, image_bytes: bytes) -> bool:
+        if not image_bytes:
+            return False
+
+        render_bytes, width_inches = self._prepare_image_for_docx(image_bytes)
         paragraph = doc.add_paragraph()
         run = paragraph.add_run()
-        run.add_picture(BytesIO(image_bytes), width=Inches(width_inches))
-        return True
+        try:
+            run.add_picture(BytesIO(render_bytes), width=Inches(width_inches))
+            return True
+        except Exception:
+            paragraph._element.getparent().remove(paragraph._element)
+            return False
+
+    def _add_rendered_snapshot(self, doc: Document, input_path: str, output_path: str, options: dict) -> bool:
+        try:
+            output_dir = os.path.dirname(output_path) or os.getcwd()
+            image_bytes = render_html_snapshot(input_path, output_dir, options)
+            return self._add_image_bytes(doc, image_bytes)
+        except Exception:
+            return False
 
     def _render_list(self, doc: Document, element: Tag, base_path: str) -> None:
         style = 'List Bullet' if element.name == 'ul' else 'List Number'
@@ -164,9 +199,15 @@ class HtmlToDocxConverter(BaseConverter):
                 run.font.name = 'Consolas'
                 run.font.size = Pt(10)
             else:
+                include_snapshot = should_include_rendered_snapshot(
+                    BeautifulSoup(html_content, "html.parser"),
+                    options,
+                )
                 soup = prepare_content_soup(html_content, options)
                 self.update_progress(input_path, 50)
                 root = soup.body or soup
+                if include_snapshot:
+                    self._add_rendered_snapshot(doc, input_path, output_path, options)
                 self._render_blocks(doc, root, input_path)
                 self.update_progress(input_path, 80)
             

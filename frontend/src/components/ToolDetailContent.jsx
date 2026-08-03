@@ -14,6 +14,11 @@ import {
   clearSelectedConversionResults,
   getSelectedFileQueue,
 } from '../utils/fileSelection';
+import {
+  createHtmlFileWithInlinedImages,
+  isHtmlImageAsset,
+  isPortableHtmlAssetTarget,
+} from '../utils/htmlAssetInlining';
 
 // 文件类型映射表
 const FILE_TYPE_MAP = {
@@ -310,8 +315,9 @@ function ToolDetailContent({ toolName, onBack }) {
     const droppedFiles = Array.from(e.dataTransfer.files);
     
     // 验证文件类型
+    const htmlAssetFiles = source === 'HTML' ? droppedFiles.filter(isHtmlImageAsset) : [];
     const validFiles = droppedFiles.filter(isValidFileType);
-    const invalidFiles = droppedFiles.filter(file => !isValidFileType(file));
+    const invalidFiles = droppedFiles.filter(file => !isValidFileType(file) && !(source === 'HTML' && isHtmlImageAsset(file)));
     
     // 显示错误提示
     if (invalidFiles.length > 0) {
@@ -326,7 +332,8 @@ function ToolDetailContent({ toolName, onBack }) {
     if (validFiles.length > 0) {
       const fileObjects = validFiles.map(file => ({
         id: Date.now() + Math.random().toString(36).substr(2, 9),
-        file
+        file,
+        assetFiles: htmlAssetFiles
       }));
       setFiles(prev => [...prev, ...fileObjects]);
       
@@ -340,8 +347,9 @@ function ToolDetailContent({ toolName, onBack }) {
     const selectedFiles = Array.from(e.target.files);
     
     // 验证文件类型
+    const htmlAssetFiles = source === 'HTML' ? selectedFiles.filter(isHtmlImageAsset) : [];
     const validFiles = selectedFiles.filter(isValidFileType);
-    const invalidFiles = selectedFiles.filter(file => !isValidFileType(file));
+    const invalidFiles = selectedFiles.filter(file => !isValidFileType(file) && !(source === 'HTML' && isHtmlImageAsset(file)));
     
     // 显示错误提示
     if (invalidFiles.length > 0) {
@@ -356,7 +364,8 @@ function ToolDetailContent({ toolName, onBack }) {
     if (validFiles.length > 0) {
       const fileObjects = validFiles.map(file => ({
         id: Date.now() + Math.random().toString(36).substr(2, 9),
-        file
+        file,
+        assetFiles: htmlAssetFiles
       }));
       setFiles(prev => [...prev, ...fileObjects]);
       
@@ -373,8 +382,9 @@ function ToolDetailContent({ toolName, onBack }) {
     const selectedFiles = Array.from(e.target.files);
     
     // 验证文件类型
+    const htmlAssetFiles = source === 'HTML' ? selectedFiles.filter(isHtmlImageAsset) : [];
     const validFiles = selectedFiles.filter(isValidFileType);
-    const invalidFiles = selectedFiles.filter(file => !isValidFileType(file));
+    const invalidFiles = selectedFiles.filter(file => !isValidFileType(file) && !(source === 'HTML' && isHtmlImageAsset(file)));
     
     // 显示错误提示
     if (invalidFiles.length > 0) {
@@ -388,7 +398,8 @@ function ToolDetailContent({ toolName, onBack }) {
     if (validFiles.length > 0) {
       const fileObjects = validFiles.map(file => ({
         id: Date.now() + Math.random().toString(36).substr(2, 9),
-        file
+        file,
+        assetFiles: htmlAssetFiles
       }));
       setFiles(prev => [...prev, ...fileObjects]);
       toast.success(t('toolDetail.messages.files_added_success', { count: validFiles.length }));
@@ -892,7 +903,7 @@ function ToolDetailContent({ toolName, onBack }) {
 
         setCurrentStage(t('toolDetail.stage_converting', { current: i + 1, total: filesToConvert.length }));
         const fileObj = filesToConvert[i];
-        const file = fileObj.file;
+        let file = fileObj.file;
         
         try {
           let result;
@@ -1146,6 +1157,14 @@ function ToolDetailContent({ toolName, onBack }) {
               options.csv_delimiter = convertOptions.csvDelimiter;
             }
             
+            if (isPortableHtmlAssetTarget(source, target) && fileObj.assetFiles?.length) {
+              try {
+                file = await createHtmlFileWithInlinedImages(file, fileObj.assetFiles);
+              } catch (inlineError) {
+                console.warn('[Frontend] Failed to inline HTML image assets:', inlineError);
+              }
+            }
+
             console.log(`[Frontend] Converting ${file.name} to ${targetFormat} with options:`, options);
             result = await convertGeneral(file, targetFormat, options);
           } else {

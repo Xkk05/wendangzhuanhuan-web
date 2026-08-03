@@ -113,3 +113,26 @@ def resolve_html_image(src: str, base_path: str | None = None, timeout: int = 10
         return _read_local_image(src, base_path)
 
     return None
+
+
+def image_data_uri(image_bytes: bytes, media_type: str) -> str:
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:{media_type};base64,{encoded}"
+
+
+def inline_soup_images(soup, base_path: str | None = None) -> int:
+    """Inline resolvable <img> sources so single-file exports keep images."""
+    inlined_count = 0
+    for image in soup.find_all("img"):
+        src = str(image.get("src") or "").strip()
+        if not src or src.startswith("data:"):
+            continue
+
+        resolved = resolve_html_image(src, base_path=base_path)
+        if not resolved:
+            continue
+
+        image_bytes, media_type = resolved
+        image["src"] = image_data_uri(image_bytes, media_type)
+        inlined_count += 1
+    return inlined_count

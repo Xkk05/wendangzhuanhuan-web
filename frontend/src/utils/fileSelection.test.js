@@ -4,6 +4,10 @@ import {
   clearSelectedConversionResults,
   getSelectedFileQueue,
 } from './fileSelection.js';
+import {
+  isHtmlImageAsset,
+  isPortableHtmlAssetTarget,
+} from './htmlAssetInlining.js';
 
 const files = [
   { id: 'first', file: { name: 'first.docx' } },
@@ -31,4 +35,17 @@ test('clears results only for files in the selected conversion queue', () => {
     second: { download_url: '/second.pdf' },
   });
   assert.equal(results.first.download_url, '/first.pdf');
+});
+
+test('recognizes image files as HTML folder assets', () => {
+  assert.equal(isHtmlImageAsset({ name: 'cover.PNG', type: '' }), true);
+  assert.equal(isHtmlImageAsset({ name: 'avatar', type: 'image/webp' }), true);
+  assert.equal(isHtmlImageAsset({ name: 'style.css', type: 'text/css' }), false);
+});
+
+test('limits portable HTML asset inlining to Word and Markdown targets', () => {
+  assert.equal(isPortableHtmlAssetTarget('HTML', 'WORD'), true);
+  assert.equal(isPortableHtmlAssetTarget('HTML', 'MARKDOWN'), true);
+  assert.equal(isPortableHtmlAssetTarget('HTML', 'PDF'), false);
+  assert.equal(isPortableHtmlAssetTarget('PDF', 'WORD'), false);
 });

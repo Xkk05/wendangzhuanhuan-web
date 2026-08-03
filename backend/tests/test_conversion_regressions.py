@@ -584,6 +584,48 @@ def test_html_docx_embeds_local_and_data_uri_images(tmp_path):
         media_files = [name for name in archive.namelist() if name.startswith('word/media/image')]
     assert len(media_files) == 2
 
+    markdown = tmp_path / 'images.md'
+    assert HtmlToMarkdownConverter().convert(str(source), str(markdown))['success']
+    markdown_text = markdown.read_text(encoding='utf-8')
+    assert '![本地图片](data:image/png;base64,' in markdown_text
+    assert '![内联图片](data:image/png;base64,' in markdown_text
+    assert 'local.png' not in markdown_text
+
+
+def test_html_word_and_markdown_add_snapshot_for_rendered_ui(tmp_path, monkeypatch):
+    source = tmp_path / 'snake.html'
+    source.write_text(
+        '<!doctype html><html><head><style>'
+        '.game { width: 440px; height: 440px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; }'
+        '</style></head><body><h1>贪吃蛇</h1><div class="game">'
+        '<div><h2>准备好了吗</h2><p>吃掉食物变长，别撞到自己</p><button>开始游戏</button></div>'
+        '</div></body></html>',
+        encoding='utf-8',
+    )
+    snapshot_buffer = BytesIO()
+    Image.new('RGB', (320, 180), (245, 245, 245)).save(snapshot_buffer, format='PNG')
+    snapshot_bytes = snapshot_buffer.getvalue()
+
+    monkeypatch.setattr(
+        'backend.converters.html_to_docx.render_html_snapshot',
+        lambda *_args, **_kwargs: snapshot_bytes,
+    )
+    docx_output = tmp_path / 'snake.docx'
+    assert HtmlToDocxConverter().convert(str(source), str(docx_output))['success']
+    document = Document(docx_output)
+    assert len(document.inline_shapes) == 1
+    assert '准备好了吗' in '\n'.join(paragraph.text for paragraph in document.paragraphs)
+
+    monkeypatch.setattr(
+        'backend.converters.html_to_markdown.render_html_snapshot',
+        lambda *_args, **_kwargs: snapshot_bytes,
+    )
+    markdown_output = tmp_path / 'snake.md'
+    assert HtmlToMarkdownConverter().convert(str(source), str(markdown_output))['success']
+    markdown_text = markdown_output.read_text(encoding='utf-8')
+    assert markdown_text.startswith('![页面渲染截图](data:image/png;base64,')
+    assert '准备好了吗' in markdown_text
+
 
 def test_html_docx_sanitizes_xml_invalid_control_characters(tmp_path):
     source = tmp_path / 'control-chars.html'
