@@ -44,6 +44,13 @@ class LocalProcessingRecordStore:
     def _utc_now() -> str:
         return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
+    def _normalize_limit(self, limit: int) -> int:
+        try:
+            requested_limit = int(limit)
+        except (TypeError, ValueError):
+            requested_limit = 10
+        return max(1, min(requested_limit, self.max_records_per_user))
+
     def append(
         self,
         *,
@@ -96,7 +103,7 @@ class LocalProcessingRecordStore:
         return dict(record)
 
     def get_recent(self, *, app_user_id: str, app_scope: str, limit: int = 10) -> list[dict]:
-        safe_limit = max(1, min(limit, 20))
+        safe_limit = self._normalize_limit(limit)
         with self._lock:
             records = self._load().get("records", [])
             scoped_records = [

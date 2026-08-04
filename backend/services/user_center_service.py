@@ -50,6 +50,10 @@ LOCAL_SESSION_FALLBACK_ENABLED = os.environ.get("LOCAL_SESSION_FALLBACK_ENABLED"
 LOCAL_SESSION_STORE_PATH = os.environ.get("LOCAL_SESSION_STORE_PATH", "/data/local-sessions.json")
 LOCAL_PROCESSING_RECORD_STORE_PATH = os.environ.get("LOCAL_PROCESSING_RECORD_STORE_PATH", "/data/local-processing-records.json")
 LOCAL_PROCESSING_RECORDS_PER_USER = int(os.environ.get("LOCAL_PROCESSING_RECORDS_PER_USER", "200"))
+PROCESSING_RECORD_QUERY_LIMIT = max(
+    1,
+    int(os.environ.get("PROCESSING_RECORD_QUERY_LIMIT", str(LOCAL_PROCESSING_RECORDS_PER_USER))),
+)
 DB_FALLBACK_ERROR_CODES = {1045, 1130, 2002, 2003, 2005, 2013}
 
 SCHEMA_STATEMENTS = [
@@ -1154,11 +1158,16 @@ class UserCenterService:
         self._log_db_step("update_membership_snapshot_total", op_started_at, token_tail=str(token)[-8:])
 
     def get_recent_records(self, token: str, limit: int = 10) -> list[dict]:
+        try:
+            safe_limit = int(limit)
+        except (TypeError, ValueError):
+            safe_limit = 10
+        safe_limit = max(1, min(safe_limit, PROCESSING_RECORD_QUERY_LIMIT))
         profile = self.get_user_profile(token)
         local_records = self._local_processing_records.get_recent(
             app_user_id=profile["user_id"],
             app_scope=APP_SCOPE,
-            limit=limit,
+            limit=safe_limit,
         )
         if profile.get("session_source") == "local_file":
             return local_records
@@ -1176,7 +1185,7 @@ class UserCenterService:
                         ORDER BY COALESCE(completed_at, created_at) DESC
                         LIMIT %s
                         """,
-                        (profile["user_id"], APP_SCOPE, max(1, min(limit, 20))),
+                        (profile["user_id"], APP_SCOPE, safe_limit),
                     )
                     rows = cursor.fetchall()
         except Exception as exc:
@@ -1209,7 +1218,7 @@ class UserCenterService:
             key=lambda record: record.get("completedAt") or record.get("createdAt") or "",
             reverse=True,
         )
-        return combined_records[:max(1, min(limit, 20))]
+        return combined_records[:safe_limit]
 
     def logout(self, token: str):
         if not token:

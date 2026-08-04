@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { App } from 'antd';
 import { AuthService } from '../services/auth';
+import UserCenterRecords from '../components/UserCenterRecords';
 import { createSafeTranslator } from '../utils/safeTranslation';
 import {
   clearPaymentIntentCache,
@@ -100,23 +101,6 @@ function getVipExpireLabel(userProfile, t, profileHydrating = false) {
   return userProfile?.is_vip ? '--' : t('userCenter.not_enabled');
 }
 
-function formatRecordStatus(status, t) {
-  const normalized = String(status || '').toLowerCase();
-  if (normalized === 'completed' || normalized === 'success' || normalized === 'done') {
-    return t('userCenter.record_status_completed');
-  }
-  if (normalized === 'failed' || normalized === 'error') {
-    return t('userCenter.record_status_failed');
-  }
-  if (normalized === 'processing' || normalized === 'running') {
-    return t('userCenter.record_status_processing');
-  }
-  if (normalized === 'waiting' || normalized === 'pending' || normalized === 'queued') {
-    return t('userCenter.record_status_waiting');
-  }
-  return status || '--';
-}
-
 function getPhoneValue(userInfo, userProfile) {
   return userInfo?.phone
     || userInfo?.mobile
@@ -158,6 +142,7 @@ function UserCenterPage() {
   const returnTo = sanitizeReturnTo(searchParams.get('returnTo'));
 
   const {
+    token,
     isLoggedIn,
     isPolling,
     profileHydrating,
@@ -667,66 +652,12 @@ function UserCenterPage() {
               </section>
             </div>
 
-            <section className="user-center-card user-center-record-card">
-              <div className="user-center-section-head">
-                <h3>{t('userCenter.recent_records')}</h3>
-                <button type="button" className="user-center-link-btn">
-                  {t('userCenter.view_all_records')}
-                </button>
-              </div>
-
-              {recentRecords?.length ? (
-                <div className="user-center-record-table-wrap">
-                  <div className="user-center-record-table">
-                    <div className="user-center-record-head">
-                      <div>{t('userCenter.record_file_name')}</div>
-                      <div>{t('userCenter.record_conversion')}</div>
-                      <div>{t('userCenter.record_status')}</div>
-                      <div>{t('userCenter.record_completed_at')}</div>
-                    </div>
-                    <div className="user-center-record-body">
-                      {recentRecords.map((record) => {
-                        const fileName = record.fileName || t('userCenter.record_file_fallback');
-                        const sourceFormat = record.sourceFormat || t('userCenter.record_format_fallback');
-                        const targetFormat = record.targetFormat || t('userCenter.record_format_fallback');
-                        const recordTime = record.completedAt || record.createdAt;
-                        const displayTime = recordTime
-                          ? formatDateTime(recordTime)
-                          : t('userCenter.record_time_fallback');
-
-                        return (
-                          <div className="user-center-record-row" key={record.id}>
-                            <div className="user-center-record-col">
-                              <span className="user-center-record-label">{t('userCenter.record_file_name')}</span>
-                              <strong>{fileName}</strong>
-                            </div>
-                            <div className="user-center-record-col">
-                              <span className="user-center-record-label">{t('userCenter.record_conversion')}</span>
-                              <span>{sourceFormat} {'->'} {targetFormat}</span>
-                            </div>
-                            <div className="user-center-record-col">
-                              <span className="user-center-record-label">{t('userCenter.record_status')}</span>
-                              <span className={`user-center-record-status is-${String(record.status || '').toLowerCase()}`}>
-                                {formatRecordStatus(record.status, t)}
-                              </span>
-                            </div>
-                            <div className="user-center-record-col">
-                              <span className="user-center-record-label">{t('userCenter.record_completed_at')}</span>
-                              <span>{displayTime}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="user-center-empty-block">
-                  <p className="user-center-empty-title">{t('userCenter.no_records')}</p>
-                  <p className="user-center-empty">{t('userCenter.no_records_hint')}</p>
-                </div>
-              )}
-            </section>
+            <UserCenterRecords
+              recentRecords={recentRecords}
+              token={token}
+              t={t}
+              formatDateTime={formatDateTime}
+            />
           </>
         )}
       </div>

@@ -5965,12 +5965,24 @@ body.web-mode .dashboard-section-break {
   color: #0f172a;
 }
 
+.user-center-section-copy {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .user-center-link-btn {
   border: none;
   background: transparent;
   color: #475569;
   font-size: 14px;
   cursor: pointer;
+}
+
+.user-center-link-btn:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
 }
 
 .user-center-kv-list {
@@ -6012,9 +6024,41 @@ body.web-mode .dashboard-section-break {
   min-height: 208px;
 }
 
+.user-center-record-card.is-expanded {
+  min-height: 420px;
+}
+
+.user-center-record-section-head {
+  align-items: flex-start;
+}
+
+.user-center-record-title-block {
+  min-width: 0;
+}
+
+.user-center-record-toggle {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 9px;
+  background: #fff;
+  color: #334155;
+  line-height: 1.2;
+}
+
+.user-center-record-toggle:hover:not(:disabled) {
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
 .user-center-record-table-wrap {
   margin-top: 12px;
   overflow-x: auto;
+}
+
+.user-center-record-card.is-expanded .user-center-record-table-wrap {
+  max-height: min(560px, 68vh);
+  overflow: auto;
 }
 
 .user-center-record-table {
@@ -6056,6 +6100,37 @@ body.web-mode .dashboard-section-break {
   color: #334155;
 }
 
+.user-center-record-file-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.user-center-record-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-center-record-file-meta {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.user-center-record-message-row {
+  grid-template-columns: 1fr;
+}
+
+.user-center-record-message-row .user-center-record-col {
+  color: #64748b;
+}
+
+.user-center-record-message-row.is-error .user-center-record-col {
+  color: #b45353;
+}
+
 .user-center-record-status {
   display: inline-flex;
   align-items: center;
@@ -6075,12 +6150,22 @@ body.web-mode .dashboard-section-break {
 
 .user-center-record-status.is-failed {
   background: #fef2f2;
-  color: #dc2626;
+  color: #b45353;
+}
+
+.user-center-record-status.is-processing {
+  background: #eff6ff;
+  color: #2563eb;
 }
 
 .user-center-record-status.is-waiting {
   background: #fff7ed;
   color: #ea580c;
+}
+
+.user-center-record-status.is-unknown {
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .user-center-record-label {

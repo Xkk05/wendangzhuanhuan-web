@@ -161,11 +161,6 @@ export const categories = {
       description: 'pdf_converter_desc',
       tools: [
         {
-          name: 'PDF To DOC',
-          icon: FilePdfOutlined,
-          description: 'Convert PDF to DOC'
-        },
-        {
           name: 'PDF To PNG',
           icon: FilePdfOutlined,
           description: 'Convert PDF to PNG'

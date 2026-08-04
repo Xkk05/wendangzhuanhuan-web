@@ -66,6 +66,18 @@ class LocalProcessingRecordStoreTests(unittest.TestCase):
             [record["fileName"] for record in records],
         )
 
+    def test_records_can_read_more_than_legacy_twenty_item_limit(self):
+        store = LocalProcessingRecordStore(self.store_path, max_records_per_user=25)
+        for index in range(25):
+            self.append_record(store, file_name=f"file-{index}.docx")
+
+        records = store.get_recent(app_user_id="user-1", app_scope="scope-1", limit=25)
+        file_names = [record["fileName"] for record in records]
+
+        self.assertEqual(25, len(records))
+        self.assertIn("file-24.docx", file_names)
+        self.assertIn("file-0.docx", file_names)
+
     def test_service_records_local_file_sessions(self):
         service = UserCenterService()
         service._local_processing_records = self.build_store()
